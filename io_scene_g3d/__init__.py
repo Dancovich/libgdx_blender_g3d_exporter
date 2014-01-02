@@ -14,9 +14,10 @@ from bpy_extras.io_utils import ExportHelper
 class G3DExporter(bpy.types.Operator, ExportHelper):
     """Export scene to G3D (LibGDX) format"""
 
-    bl_idname      = "export_json_g3d.g3dj"
-    bl_label        = "G3D Exporter"
+    bl_idname     = "export_json_g3d.g3dj"
+    bl_label      = "G3D Exporter"
     bl_options    = {'PRESET'}
+    float_to_str  = "{:8.6f}"
     
     filename_ext    = ".g3dj"
 
@@ -42,8 +43,40 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         file.write('    "version": [  0,   1],\n')
         file.write('    "id": "",\n')
         
+    def write_materials(self file):
+        """Write a 'material' section for each material attached to at least a mesh in the scene"""
+        
+        # Starting materials section
+        file.write('    "materials": [\n')
+        
+        for m in bpy.data.meshes:
+            if ( m.users <= 0 ):
+                continue
+            
+            for mat in m.materials:
+                file.write('        {\n')
+                file.write('            "id": "Material__'+ mat.name +'",\n')
+                file.write('            "ambient": ['+float_to_str.format(mat.ambient)+', '+float_to_str.format(mat.ambient)+', '+float_to_str.format(mat.ambient)+'],\n')
+                file.write('            "diffuse": ['+float_to_str.format(mat.diffuse_color[0])+', '+float_to_str.format(mat.diffuse_color[1])+', '+float_to_str.format(mat.diffuse_color[2])+'],\n')
+                file.write('            "emit": ['+float_to_str.format(mat.emit)+', '+float_to_str.format(mat.emit)+', '+float_to_str.format(mat.emit)+'],\n')
+                file.write('            "textures": [\n')
+                
+                for slot in mat.texture_slots:
+                    if (slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE'):
+                        continue
+                    
+                    file.write('                {\n')
+                    file.write('                    "id": "'+slot.name+'"')
+                    file.write('                    "filename": "'+slot.name+'"')
+                
+            
+        # Ending materials section
+        file.write('    ]\n')
+            
     def write_meshes(self, file):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
+        
+        # Starting meshes section
         file.write('    "meshes": [\n')
         
         firstMesh = True
@@ -105,12 +138,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             for vPos in range(len(vertices)):
                 v = vertices[vPos]
                 file.write('                ')
-                file.write("{:8.6f}".format(v[0][0])+', '+"{:8.6f}".format(v[0][1])+', '+"{:8.6f}".format(v[0][2])+', ')
-                file.write("{:8.6f}".format(v[1][0])+', '+"{:8.6f}".format(v[1][1])+', '+"{:8.6f}".format(v[1][2]))
+                file.write(float_to_str.format(v[0][0])+', '+float_to_str.format(v[0][1])+', '+float_to_str.format(v[0][2])+', ')
+                file.write(float_to_str.format(v[1][0])+', '+float_to_str.format(v[1][1])+', '+float_to_str.format(v[1][2]))
                 
                 if (len(v) > 3):
                     for uvpos in range(3 , len(v)):
-                        file.write(', '+"{:8.6f}".format(v[uvpos][0])+', '+"{:8.6f}".format(v[uvpos][1]))
+                        file.write(', '+float_to_str.format(v[uvpos][0])+', '+float_to_str.format(v[uvpos][1]))
                 
                 if (vPos < len(vertices)-1):
                     file.write(',\n')
@@ -134,7 +167,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     
                 
                 file.write('{\n')
-                file.write('                    "id": "meshpart_'+ str(material.name) +'",\n')
+                file.write('                    "id": "Meshpart__'+ str(material.name) +'",\n')
                 file.write('                    "type": "TRIANGLES",\n')
                 file.write('                    "indices": [ ')
                 
@@ -156,6 +189,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             file.write('            ]\n')
             file.write('        }\n')
 
+        # Ending meshes section
         file.write('    ]\n')
 
 

@@ -33,6 +33,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         output_file = open(self.filepath , 'w')
         self.write_header(output_file)
         self.write_meshes(output_file)
+        self.write_materials(output_file)
         output_file.close()
 
         return result
@@ -43,33 +44,81 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         file.write('    "version": [  0,   1],\n')
         file.write('    "id": "",\n')
         
-    def write_materials(self file):
+    def write_materials(self, file):
         """Write a 'material' section for each material attached to at least a mesh in the scene"""
         
         # Starting materials section
-        file.write('    "materials": [\n')
+        file.write('    ,"materials": [\n')
         
+        firstMaterial = True
         for m in bpy.data.meshes:
             if ( m.users <= 0 ):
                 continue
             
             for mat in m.materials:
-                file.write('        {\n')
-                file.write('            "id": "Material__'+ mat.name +'",\n')
-                file.write('            "ambient": ['+float_to_str.format(mat.ambient)+', '+float_to_str.format(mat.ambient)+', '+float_to_str.format(mat.ambient)+'],\n')
-                file.write('            "diffuse": ['+float_to_str.format(mat.diffuse_color[0])+', '+float_to_str.format(mat.diffuse_color[1])+', '+float_to_str.format(mat.diffuse_color[2])+'],\n')
-                file.write('            "emit": ['+float_to_str.format(mat.emit)+', '+float_to_str.format(mat.emit)+', '+float_to_str.format(mat.emit)+'],\n')
-                file.write('            "textures": [\n')
+                if firstMaterial:
+                    firstMaterial = False
+                    file.write('        ')
+                else:
+                    file.write('        ,')
                 
+                file.write('{\n')
+                file.write('            "id": "Material__'+ mat.name +'",\n')
+                file.write('            "ambient": ['+self.float_to_str.format(mat.ambient)+', '+self.float_to_str.format(mat.ambient)+', '+self.float_to_str.format(mat.ambient)+'],\n')
+                file.write('            "diffuse": ['+self.float_to_str.format(mat.diffuse_color[0])+', '+self.float_to_str.format(mat.diffuse_color[1])+', '+self.float_to_str.format(mat.diffuse_color[2])+'],\n')
+                file.write('            "emit": ['+self.float_to_str.format(mat.emit)+', '+self.float_to_str.format(mat.emit)+', '+self.float_to_str.format(mat.emit)+']\n')
+                
+                foundTexture = False
                 for slot in mat.texture_slots:
-                    if (slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE'):
+                    if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
                         continue
                     
-                    file.write('                {\n')
-                    file.write('                    "id": "'+slot.name+'"')
-                    file.write('                    "filename": "'+slot.name+'"')
+                    if not foundTexture:
+                        foundTexture = True
+                        file.write('            ,"textures": [\n')
+                        file.write('                ')
+                    else:
+                        file.write('                ,')
+                    
+                    file.write('{\n')
+                    file.write('                    "id": "'+slot.name+'"\n')
+                    file.write('                    "filename": "'+slot.texture.image.filepath+'"\n')
+                    
+                    usageType = ""
+                    
+                    if slot.use_map_color_diffuse:
+                        usageType = "DIFFUSE"
+                    elif slot.use_map_normal and slot.texture.use_normal_map:
+                        usageType = "NORMAL"
+                    elif slot.use_map_normal and not slot.texture.use_normal_map:
+                        usageType = "BUMP"
+                    elif slot.use_map_ambient:
+                        usageType = "AMBIENT"
+                    elif slot.use_map_emit:
+                        usageType = "EMISSIVE"
+                    elif slot.use_map_diffuse:
+                        usageType = "REFLECTION"
+                    elif slot.use_map_alpha:
+                        usageType = "TRANSPARENCY"
+                    elif slot.use_map_color_spec:
+                        usageType = "SPECULAR"
+                    elif slot.use_map_specular:
+                        usageType = "SHININESS"
+                    else:
+                        usageType = "UNKNOWN"
+                    
+                    file.write('                    "type": "'+usageType+'"\n')
+                    
+                    # Ending current texture
+                    file.write('                }\n')
                 
-            
+                # Ending texture section inside material
+                if foundTexture:
+                    file.write('            ]\n')
+                    
+                # Ending current material
+                file.write('        }\n')
+                    
         # Ending materials section
         file.write('    ]\n')
             
@@ -138,12 +187,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             for vPos in range(len(vertices)):
                 v = vertices[vPos]
                 file.write('                ')
-                file.write(float_to_str.format(v[0][0])+', '+float_to_str.format(v[0][1])+', '+float_to_str.format(v[0][2])+', ')
-                file.write(float_to_str.format(v[1][0])+', '+float_to_str.format(v[1][1])+', '+float_to_str.format(v[1][2]))
+                file.write(self.float_to_str.format(v[0][0])+', '+self.float_to_str.format(v[0][1])+', '+self.float_to_str.format(v[0][2])+', ')
+                file.write(self.float_to_str.format(v[1][0])+', '+self.float_to_str.format(v[1][1])+', '+self.float_to_str.format(v[1][2]))
                 
                 if (len(v) > 3):
                     for uvpos in range(3 , len(v)):
-                        file.write(', '+float_to_str.format(v[uvpos][0])+', '+float_to_str.format(v[uvpos][1]))
+                        file.write(', '+self.float_to_str.format(v[uvpos][0])+', '+self.float_to_str.format(v[uvpos][1]))
                 
                 if (vPos < len(vertices)-1):
                     file.write(',\n')

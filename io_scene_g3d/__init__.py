@@ -9,6 +9,7 @@ bl_info = {
 }
         
 import bpy
+import mathutils
 from bpy_extras.io_utils import ExportHelper
 
 class G3DExporter(bpy.types.Operator, ExportHelper):
@@ -20,7 +21,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     float_to_str  = "{:8.6f}"
     
     filename_ext    = ".g3dj"
-
+    
     def execute(self, context):
         """Main method run by Blender to export a G3D file"""
 
@@ -34,15 +35,111 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         self.write_header(output_file)
         self.write_meshes(output_file)
         self.write_materials(output_file)
+        self.write_nodes(output_file)
+        self.write_animations(output_file)
+        self.write_footer(output_file)
         output_file.close()
 
         return result
 
     def write_header(self, file):
         """Writes the header of a G3D file"""
-        file.write('{\n')
-        file.write('    "version": [  0,   1],\n')
-        file.write('    "id": "",\n')
+        file.write("{\n")
+        file.write("    \"version\": [  0,   1],\n")
+        file.write("    \"id\": "",\n")
+        
+    def write_footer(self, file):
+        """Writes a footer section before closing the file"""
+        file.write("}")
+        
+    def write_nodes(self, file):
+        """Writes a 'nodes' section, the section that will relate meshes to objects and materials"""
+        
+        # Starting nodes section
+        file.write("    ,\"nodes\": [\n")
+        
+        firstNode = True
+        for obj in bpy.data.objects:
+            if obj.type != 'MESH':
+                continue
+            
+            if firstNode:
+                firstNode = False
+                file.write("        {\n")
+            else:
+                file.write("        ,{\n")
+                
+            file.write("            \"id\": \"%s\"\n" % (obj.name))
+            
+            old_rot_mode = obj.rotation_mode
+            obj.rotation_mode = 'QUATERNION'
+            if ( not self.test_default_quaternion( obj.rotation_quaternion )):
+                rtq = obj.rotation_quaternion
+                file.write("            ,\"rotation\": [ %s , %s , %s , %s ]\n" % ( self.float_to_str.format(rtq[0]) , self.float_to_str.format(rtq[1]) , self.float_to_str.format(rtq[2]) , self.float_to_str.format(rtq[3]) ))
+                
+            obj.rotation_mode = old_rot_mode
+                
+            if ( not self.test_default_scale( obj.scale )):
+                sql = obj.scale
+                file.write('            ,"scale": ['+self.float_to_str.format(sql[0])+', '+self.float_to_str.format(sql[1])+', '+self.float_to_str.format(sql[2])+']\n')
+                
+            if ( not self.test_default_transform( obj.location )):
+                loc = obj.location
+                file.write('            ,"translation": ['+self.float_to_str.format(loc[0])+', '+self.float_to_str.format(loc[1])+', '+self.float_to_str.format(loc[2])+']\n')
+                
+            file.write('            ,"parts": [\n')
+            
+            firstMaterial = True
+            for mat in obj.data.materials:
+                if firstMaterial:
+                    firstMaterial = False
+                    file.write('                {\n')
+                else:
+                    file.write('                ,{\n')
+                    
+                file.write('                    "meshpartid": "Meshpart__'+obj.data.name+'__'+mat.name+'",\n')
+                file.write('                    "materialid": "Material__'+mat.name+'",\n')
+                
+                # Start writing uv mapping
+                file.write('                    "uvMapping": [')
+                
+                firstUV = True
+                for uvidx in range(len(obj.data.uv_layers)):
+                    uv = obj.data.uv_layers[uvidx]
+                    
+                    if firstUV:
+                        firstUV = False
+                    else:
+                        file.write(',')
+                    
+                    file.write('[')
+                    firstSlot = True
+                    for slotidx in range(len(mat.texture_slots)):
+                        
+                        slot = mat.texture_slots[slotidx]
+                        if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                            continue
+                        
+                        if (slot.uv_layer == uv.name or (slot.uv_layer == "" and uvidx == 0)):
+                            if firstSlot:
+                                firstSlot = False
+                            else:
+                                file.write(', ')
+                                
+                            file.write(str(slotidx))
+                        
+                    file.write(']')
+                        
+                # End write uv mapping
+                file.write(']\n')
+
+                file.write('                }\n')
+                
+            file.write('            ]\n')
+            file.write('        }\n')
+        
+        # Ending nodes section
+        file.write('    ]\n')
         
     def write_materials(self, file):
         """Write a 'material' section for each material attached to at least a mesh in the scene"""
@@ -81,8 +178,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         file.write('                ,')
                     
                     file.write('{\n')
-                    file.write('                    "id": "'+slot.name+'"\n')
-                    file.write('                    "filename": "'+slot.texture.image.filepath+'"\n')
+                    file.write('                    "id": "'+slot.name+'",\n')
+                    file.write('                    "filename": "' + slot.texture.image.filepath.replace("//", "", 1) + '",\n')
                     
                     usageType = ""
                     
@@ -162,10 +259,16 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
                 for vPos in range(len(pol.vertices)):
                     vi = pol.vertices[vPos]
+                    
+                    # UNCOMMENT IF USING VERTEX NORMALS
+                    v_normal = m.vertices[vi].normal
+                    
+                    # UNCOMMENT IF USING FACE NORMALS
+                    #v_normal = pol.normal
+                    
                     vertex = []
                     vertex.append(m.vertices[vi].co)
-                    vertex.append(m.vertices[vi].normal)
-                    vertex.append(pol.normal)
+                    vertex.append(v_normal)
 
                     for uv in m.uv_layers:
                         vertex.append(uv.data[ pol.loop_indices[vPos] ].uv)
@@ -173,11 +276,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     newPos = 0
                     try:
                         newPos = vertices.index(vertex)
-                        print("FOUND VERTEX AT "+str(newPos))
+                        # print("FOUND VERTEX AT "+str(newPos))
                     except Exception:
                         vertices.append(vertex)
                         newPos = len(vertices)-1
-                        print("CREATED VERTEX AT "+str(newPos))
+                        # print("CREATED VERTEX AT "+str(newPos))
 
                     savedFace.append(newPos)
                     
@@ -190,8 +293,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 file.write(self.float_to_str.format(v[0][0])+', '+self.float_to_str.format(v[0][1])+', '+self.float_to_str.format(v[0][2])+', ')
                 file.write(self.float_to_str.format(v[1][0])+', '+self.float_to_str.format(v[1][1])+', '+self.float_to_str.format(v[1][2]))
                 
-                if (len(v) > 3):
-                    for uvpos in range(3 , len(v)):
+                if (len(v) > 2):
+                    for uvpos in range(2 , len(v)):
                         file.write(', '+self.float_to_str.format(v[uvpos][0])+', '+self.float_to_str.format(v[uvpos][1]))
                 
                 if (vPos < len(vertices)-1):
@@ -216,7 +319,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     
                 
                 file.write('{\n')
-                file.write('                    "id": "Meshpart__'+ str(material.name) +'",\n')
+                file.write('                    "id": "Meshpart__' + str(m.name) + '__' + str(material.name) +'",\n')
                 file.write('                    "type": "TRIANGLES",\n')
                 file.write('                    "indices": [ ')
                 
@@ -240,6 +343,24 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
         # Ending meshes section
         file.write('    ]\n')
+        
+    def write_animations(self, file):
+        """Write an 'animations' section for each animation in the scene"""
+        
+        # Starting animations section
+        file.write('    ,"animations": [\n')
+        
+        # Ending animations section
+        file.write('    ]\n')
+        
+    def test_default_quaternion(self, quaternion):
+        return quaternion[0] == 1.0 and quaternion[1] == 0.0 and quaternion[2] == 0.0 and quaternion[3] == 0.0
+    
+    def test_default_scale(self, scale):
+        return scale[0] == 1.0 and scale[1] == 1.0 and scale[2] == 1.0
+    
+    def test_default_transform(self, transform):
+        return transform[0] == 0.0 and transform[1] == 0.0 and transform[2] == 0.0
 
 
 class Mesh(object):

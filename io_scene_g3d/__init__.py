@@ -11,6 +11,7 @@ bl_info = {
 import bpy
 import mathutils
 from bpy_extras.io_utils import ExportHelper
+from bpy.props import (BoolProperty,EnumProperty)
 
 class G3DExporter(bpy.types.Operator, ExportHelper):
     """Export scene to G3D (LibGDX) format"""
@@ -18,9 +19,29 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     bl_idname     = "export_json_g3d.g3dj"
     bl_label      = "G3D Exporter"
     bl_options    = {'PRESET'}
-    float_to_str  = "{:8.6f}"
+    
+    # Exporter options
+    use_selection = BoolProperty( \
+            name="Selection Only", \
+            description="Export only selected objects", \
+            default=False, \
+            )
+            
+    use_normals = EnumProperty(
+            name="Normals To Use",
+            items=(('VERTEX', "Vertex Normals", "Export normals for each vertex"),
+                   ('FACE', "Face Normals", "Each three vertices that compose a face will get the face's normals")),
+            default='VERTEX',
+            )
+            
+    use_tangent_binormal = BoolProperty( \
+            name="Export Tangent and Binormal Vectors", \
+            description="Export tangent and binormal vectors for each vertex", \
+            default=False, \
+            )
     
     filename_ext    = ".g3dj"
+    float_to_str  = "{:8.6f}"
     
     def execute(self, context):
         """Main method run by Blender to export a G3D file"""
@@ -33,7 +54,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
         output_file = open(self.filepath , 'w')
         self.write_header(output_file)
-        self.write_meshes(output_file)
+        self.write_meshes(output_file , context)
         self.write_materials(output_file)
         self.write_nodes(output_file)
         self.write_animations(output_file)
@@ -46,7 +67,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         """Writes the header of a G3D file"""
         file.write("{\n")
         file.write("    \"version\": [  0,   1],\n")
-        file.write("    \"id\": "",\n")
+        file.write("    \"id\": \"\",\n")
         
     def write_footer(self, file):
         """Writes a footer section before closing the file"""
@@ -60,7 +81,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
         firstNode = True
         for obj in bpy.data.objects:
-            if obj.type != 'MESH':
+            if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
             
             if firstNode:
@@ -75,33 +96,38 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             obj.rotation_mode = 'QUATERNION'
             if ( not self.test_default_quaternion( obj.rotation_quaternion )):
                 rtq = obj.rotation_quaternion
-                file.write("            ,\"rotation\": [ %s , %s , %s , %s ]\n" % ( self.float_to_str.format(rtq[0]) , self.float_to_str.format(rtq[1]) , self.float_to_str.format(rtq[2]) , self.float_to_str.format(rtq[3]) ))
+                file.write("            ,\"rotation\": [ %s , %s , %s , %s ]\n" \
+                    % ( self.float_to_str.format(rtq[0]) , self.float_to_str.format(rtq[1]) \
+                    , self.float_to_str.format(rtq[2]) , self.float_to_str.format(rtq[3]) ))
                 
             obj.rotation_mode = old_rot_mode
                 
             if ( not self.test_default_scale( obj.scale )):
                 sql = obj.scale
-                file.write('            ,"scale": ['+self.float_to_str.format(sql[0])+', '+self.float_to_str.format(sql[1])+', '+self.float_to_str.format(sql[2])+']\n')
+                file.write("            ,\"scale\": [ %s , %s , %s ]\n" \
+                    % ( self.float_to_str.format(sql[0]) , self.float_to_str.format(sql[1]) , self.float_to_str.format(sql[2]) ) )
                 
             if ( not self.test_default_transform( obj.location )):
                 loc = obj.location
-                file.write('            ,"translation": ['+self.float_to_str.format(loc[0])+', '+self.float_to_str.format(loc[1])+', '+self.float_to_str.format(loc[2])+']\n')
+                file.write("            ,\"translation\": [ %s , %s , %s ]\n" \
+                    % ( self.float_to_str.format(loc[0]) , self.float_to_str.format(loc[1]) , self.float_to_str.format(loc[2]) ) )
                 
-            file.write('            ,"parts": [\n')
+            file.write("            ,\"parts\": [\n")
             
             firstMaterial = True
             for mat in obj.data.materials:
                 if firstMaterial:
                     firstMaterial = False
-                    file.write('                {\n')
+                    file.write("                {\n")
                 else:
-                    file.write('                ,{\n')
+                    file.write("                ,{\n")
                     
-                file.write('                    "meshpartid": "Meshpart__'+obj.data.name+'__'+mat.name+'",\n')
-                file.write('                    "materialid": "Material__'+mat.name+'",\n')
+                file.write("                    \"meshpartid\": \"Meshpart__%s__%s\",\n" % (obj.data.name , mat.name) )
+                file.write("                    \"materialid\": \"Material__%s\"\n" % (mat.name) )
                 
                 # Start writing uv mapping
-                file.write('                    "uvMapping": [')
+                if len(obj.data.uv_layers) > 0:
+                    file.write("                    ,\"uvMapping\": [")
                 
                 firstUV = True
                 for uvidx in range(len(obj.data.uv_layers)):
@@ -124,46 +150,53 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             if firstSlot:
                                 firstSlot = False
                             else:
-                                file.write(', ')
+                                file.write(", ")
                                 
                             file.write(str(slotidx))
                         
-                    file.write(']')
+                    file.write("]")
                         
                 # End write uv mapping
-                file.write(']\n')
+                if len(obj.data.uv_layers) > 0:
+                    file.write("]\n")
 
-                file.write('                }\n')
+                file.write("                }\n")
                 
-            file.write('            ]\n')
-            file.write('        }\n')
+            file.write("            ]\n")
+            file.write("        }\n")
         
         # Ending nodes section
-        file.write('    ]\n')
+        file.write("    ]\n")
         
     def write_materials(self, file):
         """Write a 'material' section for each material attached to at least a mesh in the scene"""
         
         # Starting materials section
-        file.write('    ,"materials": [\n')
+        file.write("    ,\"materials\": [\n")
         
         firstMaterial = True
-        for m in bpy.data.meshes:
-            if ( m.users <= 0 ):
+        for obj in bpy.data.objects:
+            if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
+            
+            # Define 'm' as our mesh
+            m = obj.data
             
             for mat in m.materials:
                 if firstMaterial:
                     firstMaterial = False
-                    file.write('        ')
+                    file.write("        ")
                 else:
-                    file.write('        ,')
+                    file.write("        ,")
                 
-                file.write('{\n')
-                file.write('            "id": "Material__'+ mat.name +'",\n')
-                file.write('            "ambient": ['+self.float_to_str.format(mat.ambient)+', '+self.float_to_str.format(mat.ambient)+', '+self.float_to_str.format(mat.ambient)+'],\n')
-                file.write('            "diffuse": ['+self.float_to_str.format(mat.diffuse_color[0])+', '+self.float_to_str.format(mat.diffuse_color[1])+', '+self.float_to_str.format(mat.diffuse_color[2])+'],\n')
-                file.write('            "emit": ['+self.float_to_str.format(mat.emit)+', '+self.float_to_str.format(mat.emit)+', '+self.float_to_str.format(mat.emit)+']\n')
+                file.write("{\n")
+                file.write("            \"id\": \"Material__%s\",\n" % (mat.name) )
+                file.write("            \"ambient\": [%s, %s, %s],\n" \
+                    % (self.float_to_str.format(mat.ambient) , self.float_to_str.format(mat.ambient) , self.float_to_str.format(mat.ambient)) )
+                file.write("            \"diffuse\": [%s, %s, %s],\n" \
+                    % ( self.float_to_str.format(mat.diffuse_color[0]) , self.float_to_str.format(mat.diffuse_color[1]) , self.float_to_str.format(mat.diffuse_color[2]) ) )
+                file.write("            \"emissive\": [%s, %s, %s]\n" \
+                    % ( self.float_to_str.format(mat.emit) , self.float_to_str.format(mat.emit) , self.float_to_str.format(mat.emit) ) )
                 
                 foundTexture = False
                 for slot in mat.texture_slots:
@@ -172,14 +205,14 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     
                     if not foundTexture:
                         foundTexture = True
-                        file.write('            ,"textures": [\n')
-                        file.write('                ')
+                        file.write("            ,\"textures\": [\n")
+                        file.write("                ")
                     else:
-                        file.write('                ,')
+                        file.write("                ,")
                     
-                    file.write('{\n')
-                    file.write('                    "id": "'+slot.name+'",\n')
-                    file.write('                    "filename": "' + slot.texture.image.filepath.replace("//", "", 1) + '",\n')
+                    file.write("{\n")
+                    file.write("                    \"id\": \"%s\",\n" % (slot.name) )
+                    file.write("                    \"filename\": \"%s\",\n" % (slot.texture.image.filepath.replace("//", "", 1)) )
                     
                     usageType = ""
                     
@@ -204,52 +237,69 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     else:
                         usageType = "UNKNOWN"
                     
-                    file.write('                    "type": "'+usageType+'"\n')
+                    file.write("                    \"type\": \"%s\"\n" % (usageType))
                     
                     # Ending current texture
-                    file.write('                }\n')
+                    file.write("                }\n")
                 
                 # Ending texture section inside material
                 if foundTexture:
-                    file.write('            ]\n')
+                    file.write("            ]\n")
                     
                 # Ending current material
-                file.write('        }\n')
+                file.write("        }\n")
                     
         # Ending materials section
-        file.write('    ]\n')
+        file.write("    ]\n")
             
-    def write_meshes(self, file):
+    def write_meshes(self, file, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
         
+        # Read option of which normals to save
+        use_face_normal = False
+        if self.use_normals == 'FACE':
+            use_face_normal = True
+        
         # Starting meshes section
-        file.write('    "meshes": [\n')
+        file.write("    \"meshes\": [\n")
+        
+        # Select what meshes to export (all or only selected) and triangulate meshes prior to exporting
+        tri_meshes = []
+        for obj in bpy.data.objects:
+            if obj.type != 'MESH' or (self.use_selection and not obj.select):
+                continue
+            
+            current_mesh = obj.to_mesh(context.scene , True, 'PREVIEW', calc_tessface=False)
+            self.mesh_triangulate(current_mesh)
+            tri_meshes.append( [obj.data.name,current_mesh] )
         
         firstMesh = True
-        for m in bpy.data.meshes:
+        for tri_mesh in tri_meshes:
+            m_name = tri_mesh[0]
+            m = tri_mesh[1]
             savedFaces = []
             
-            if ( m.users <= 0 ):
-                continue
+            #if ( m.users <= 0 ):
+            #    continue
             
             if (firstMesh):
                 firstMesh=False
-                file.write('        {\n')
+                file.write("        {\n")
             else:
-                file.write('        ,{\n')
+                file.write("        ,{\n")
             
             # We will have at least the position and normal of each vertex
-            file.write('            "attributes": ["POSITION", "NORMAL"')
+            file.write("            \"attributes\": [\"POSITION\", \"NORMAL\"")
             
             # If we have at least one uvmap, we will have the TEXCOORD attribute.
             uv_count = 0
             for uv in m.uv_layers:
-                file.write(', "TEXCOORD'+str(uv_count)+'"')
+                file.write(", \"TEXCOORD%d\"" % (uv_count))
                 uv_count = uv_count+1
                 
             # Start writing vertices of this mesh
-            file.write('],\n')
-            file.write('            "vertices": [\n')
+            file.write("],\n")
+            file.write("            \"vertices\": [\n")
             
             # First we collect vertices from the mesh's faces.
             vertices = []
@@ -260,11 +310,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 for vPos in range(len(pol.vertices)):
                     vi = pol.vertices[vPos]
                     
-                    # UNCOMMENT IF USING VERTEX NORMALS
-                    v_normal = m.vertices[vi].normal
-                    
-                    # UNCOMMENT IF USING FACE NORMALS
-                    #v_normal = pol.normal
+                    if use_face_normal:
+                        v_normal = pol.normal
+                    else:
+                        v_normal = m.vertices[vi].normal
                     
                     vertex = []
                     vertex.append(m.vertices[vi].co)
@@ -276,11 +325,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     newPos = 0
                     try:
                         newPos = vertices.index(vertex)
-                        # print("FOUND VERTEX AT "+str(newPos))
                     except Exception:
                         vertices.append(vertex)
                         newPos = len(vertices)-1
-                        # print("CREATED VERTEX AT "+str(newPos))
 
                     savedFace.append(newPos)
                     
@@ -289,21 +336,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Now we write those vertices to the "vertices" section of the file
             for vPos in range(len(vertices)):
                 v = vertices[vPos]
-                file.write('                ')
-                file.write(self.float_to_str.format(v[0][0])+', '+self.float_to_str.format(v[0][1])+', '+self.float_to_str.format(v[0][2])+', ')
-                file.write(self.float_to_str.format(v[1][0])+', '+self.float_to_str.format(v[1][1])+', '+self.float_to_str.format(v[1][2]))
+                file.write("                ")
+                file.write("%s, %s, %s, " % (self.float_to_str.format(v[0][0]) , self.float_to_str.format(v[0][1]) , self.float_to_str.format(v[0][2])))
+                file.write("%s, %s, %s" % (self.float_to_str.format(v[1][0]) , self.float_to_str.format(v[1][1]) , self.float_to_str.format(v[1][2])))
                 
                 if (len(v) > 2):
                     for uvpos in range(2 , len(v)):
-                        file.write(', '+self.float_to_str.format(v[uvpos][0])+', '+self.float_to_str.format(v[uvpos][1]))
+                        file.write(", %s, %s" % (self.float_to_str.format(v[uvpos][0]) , self.float_to_str.format(v[uvpos][1])))
                 
                 if (vPos < len(vertices)-1):
-                    file.write(',\n')
+                    file.write(",\n")
                 else:
-                    file.write('\n            ],\n')
+                    file.write("\n            ],\n")
              
             # Now we write the "parts" section, one part for every material
-            file.write('            "parts": [\n')
+            file.write("            \"parts\": [\n")
             firstPart = True
             for mPos in range(len(m.materials)):
                 material = m.materials[mPos]
@@ -313,15 +360,15 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
                 if (firstPart):
                     firstPart = False
-                    file.write('                ')
+                    file.write("                ")
                 else:
-                    file.write('                ,')
+                    file.write("                ,")
                     
                 
-                file.write('{\n')
-                file.write('                    "id": "Meshpart__' + str(m.name) + '__' + str(material.name) +'",\n')
-                file.write('                    "type": "TRIANGLES",\n')
-                file.write('                    "indices": [ ')
+                file.write("{\n")
+                file.write("                    \"id\": \"Meshpart__%s__%s\",\n" % (m_name , material.name) )
+                file.write("                    \"type\": \"TRIANGLES\",\n")
+                file.write("                    \"indices\": [ ")
                 
                 firstFace = True
                 for faceIdx in range(len(m.polygons)):
@@ -332,26 +379,34 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         if (firstFace):
                             firstFace = False
                         else:
-                            file.write(', ')
-                        file.write(str(savedFace[0])+', '+str(savedFace[1])+', '+str(savedFace[2]))
+                            file.write(", ")
+                        file.write("%d, %d, %d" % (savedFace[0] , savedFace[1] , savedFace[2]))
 
-                file.write(' ]\n')
-                file.write('                }\n')
+                file.write(" ]\n")
+                file.write("                }\n")
                 
-            file.write('            ]\n')
-            file.write('        }\n')
+            file.write("            ]\n")
+            file.write("        }\n")
 
         # Ending meshes section
-        file.write('    ]\n')
+        file.write("    ]\n")
         
     def write_animations(self, file):
         """Write an 'animations' section for each animation in the scene"""
         
         # Starting animations section
-        file.write('    ,"animations": [\n')
+        file.write("    ,\"animations\": [\n")
         
         # Ending animations section
-        file.write('    ]\n')
+        file.write("    ]\n")
+        
+    def mesh_triangulate(self, me):
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.to_mesh(me)
+        bm.free()
         
     def test_default_quaternion(self, quaternion):
         return quaternion[0] == 1.0 and quaternion[1] == 0.0 and quaternion[2] == 0.0 and quaternion[3] == 0.0
@@ -370,7 +425,7 @@ class Mesh(object):
         return '<Mesh(%s)>' % self.s
 
 def menu_func(self, context):
-    self.layout.operator(G3DExporter.bl_idname, text="LibGDX G3D text format(.g3dj)")
+    self.layout.operator(G3DExporter.bl_idname, text="LibGDX G3D text format (.g3dj)")
 
 def register():
     bpy.utils.register_module(__name__)

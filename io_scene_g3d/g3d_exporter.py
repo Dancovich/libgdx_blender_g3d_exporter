@@ -187,8 +187,20 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     % (self.float_to_str.format(mat.ambient) , self.float_to_str.format(mat.ambient) , self.float_to_str.format(mat.ambient)) )
                 file.write("            \"diffuse\": [%s, %s, %s],\n" \
                     % ( self.float_to_str.format(mat.diffuse_color[0]) , self.float_to_str.format(mat.diffuse_color[1]) , self.float_to_str.format(mat.diffuse_color[2]) ) )
-                file.write("            \"emissive\": [%s, %s, %s]\n" \
+                file.write("            \"specular\": [%s, %s, %s],\n" \
+                    % ( self.float_to_str.format(mat.specular_color[0]) , self.float_to_str.format(mat.specular_color[1]) , self.float_to_str.format(mat.specular_color[2]) ) )
+                file.write("            \"emissive\": [%s, %s, %s],\n" \
                     % ( self.float_to_str.format(mat.emit) , self.float_to_str.format(mat.emit) , self.float_to_str.format(mat.emit) ) )
+                file.write("            \"shininess\": %s\n" \
+                    % ( self.float_to_str.format(mat.specular_intensity) ) )
+
+                if mat.raytrace_mirror.use:
+                    file.write("            ,\"reflection\": %s\n" \
+                        % ( self.float_to_str.format(mat.raytrace_mirror.reflect_factor) ) )
+
+                if mat.use_transparency:
+                    file.write("            ,\"opacity\": %s\n" \
+                        % ( self.float_to_str.format(mat.alpha) ) )
                 
                 foundTexture = False
                 for slot in mat.texture_slots:
@@ -247,9 +259,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     def write_meshes(self, file, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
         
-        # Add new properties to MeshVertex and MeshPolygon classes
-        NormalMapHelper.create_properties(None)
-        
         # Starting meshes section
         file.write("    \"meshes\": [\n")
         
@@ -263,16 +272,39 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             current_mesh = obj.to_mesh(context.scene , True, 'PREVIEW', calc_tessface=False)
             self.mesh_triangulate(current_mesh)
             
-            # Generate tangent and binormal vectors for this mesh
-            NormalMapHelper.generate_tangent_binormal(None,current_mesh)
-            print("TESTE "+str(vx.tangent) + " - " + str(vx.binormal))
-            
-            tri_meshes.append( [obj.data.name,current_mesh] )
+            # Generate tangent and binormal vectors for this mesh, for this we need at least one UV layer
+            if len(current_mesh.uv_layers) > 0:
+                uv_layer_name = ""
+                if len(current_mesh.uv_layers) > 1:
+                    # Search for a texture with normal mapping, if one doesn't exist use the first UV layer available
+                    for mat in current_mesh.materials:
+                        for slot in mat.texture_slots:
+                            if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                                continue
+                            elif slot.use_map_normal:
+                                uv_layer_name = slot.uv_layer
+                                break
 
+                        if uv_layer_name != "":
+                            break
+                        
+
+                face_tangent_binormal = [None] * len(current_mesh.polygons)
+                vertex_tangent_binormal = [None] * len(current_mesh.vertices)
+                NormalMapHelper.generate_tangent_binormal(None,current_mesh,face_tangent_binormal,vertex_tangent_binormal,uv_layer_name)
+            else:
+                face_tangent_binormal = None
+                vertex_tangent_binormal = None
+
+            tri_meshes.append( [obj.data.name,current_mesh,face_tangent_binormal,vertex_tangent_binormal] )
+
+        # Now we have triangulated our meshes and generated tangent and binormal vectors. Export them.
         firstMesh = True
         for tri_mesh in tri_meshes:
             m_name = tri_mesh[0]
             m = tri_mesh[1]
+            face_tangent_binormal = tri_mesh[2]
+            vertex_tangent_binormal = tri_mesh[3]
             savedFaces = []
             
             if (firstMesh):
@@ -283,12 +315,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             # We will have at least the position and normal of each vertex
             file.write("            \"attributes\": [\"POSITION\", \"NORMAL\"")
+
+            # If requested, we will have tangent and binormal attributes
+            export_tangent = False
+            if self.use_tangent_binormal and face_tangent_binormal != None and vertex_tangent_binormal != None:
+                file.write(", \"TANGENT\", \"BINORMAL\"")
+                export_tangent = True
             
             # If we have at least one uvmap, we will have the TEXCOORD attribute.
             uv_count = 0
+            export_texture = False
             for uv in m.uv_layers:
+                export_texture = True
                 file.write(", \"TEXCOORD%d\"" % (uv_count))
                 uv_count = uv_count+1
+                
                 
             # Start writing vertices of this mesh
             file.write("],\n")
@@ -307,10 +348,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         v_normal = pol.normal
                     elif self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth):
                         v_normal = m.vertices[vi].normal
-                    
+
+                    if export_tangent and self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not pol.use_smooth):
+                        v_tangent = face_tangent_binormal[faceIdx][0]
+                        v_binormal = face_tangent_binormal[faceIdx][1]
+                    elif export_tangent and self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth):
+                        v_tangent = vertex_tangent_binormal[vi][0]
+                        v_binormal = vertex_tangent_binormal[vi][1]
+
                     vertex = []
                     vertex.append(m.vertices[vi].co)
                     vertex.append(v_normal)
+
+                    if export_tangent:
+                        vertex.append(v_tangent)
+                        vertex.append(v_binormal)
 
                     for uv in m.uv_layers:
                         vertex.append(uv.data[ pol.loop_indices[vPos] ].uv)
@@ -332,9 +384,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 file.write("                ")
                 file.write("%s, %s, %s, " % (self.float_to_str.format(v[0][0]) , self.float_to_str.format(v[0][1]) , self.float_to_str.format(v[0][2])))
                 file.write("%s, %s, %s" % (self.float_to_str.format(v[1][0]) , self.float_to_str.format(v[1][1]) , self.float_to_str.format(v[1][2])))
+
+                if export_tangent:
+                    file.write(", %s, %s, %s" % (self.float_to_str.format(v[2][0]) , self.float_to_str.format(v[2][1]), self.float_to_str.format(v[2][2])))
+                    file.write(", %s, %s, %s" % (self.float_to_str.format(v[3][0]) , self.float_to_str.format(v[3][1]), self.float_to_str.format(v[3][2])))
                 
-                if (len(v) > 2):
-                    for uvpos in range(2 , len(v)):
+                if export_texture:
+                    start_pos = 2
+                    if export_tangent:
+                        start_pos = 4
+
+                    for uvpos in range(start_pos , len(v)):
                         file.write(", %s, %s" % (self.float_to_str.format(v[uvpos][0]) , self.float_to_str.format(v[uvpos][1])))
                 
                 if (vPos < len(vertices)-1):

@@ -1,43 +1,9 @@
 import bpy
 from mathutils import Vector
-from bpy.types import (MeshVertex,MeshPolygon)
-
-def tangent_getter(self):
-    """Getter method for tangent property"""
-    value = None
-    if (self._tangent == None):
-        value = Vector()
-    else:
-        value = self._tangent
-    return value
-
-def tangent_setter(self , value):
-    """Setter method for tangent property"""
-    self._tangent = value
-
-def binormal_getter(self):
-    """Getter method for tangent property"""
-    return self._binormal
-
-def binormal_setter(self , value):
-    """Setter method for tangent property"""
-    self._binormal = value
 
 class NormalMapHelper():
 
-    def create_properties(self):
-        """Create aditional properties to MeshVertex and MeshPolygon classes to store tangent and binormal vectors"""
-        MeshVertex._tangent = None
-        MeshVertex._binormal = None
-        MeshPolygon._tangent = None
-        MeshPolygon._binormal = None
-        MeshVertex.tangent = property(tangent_getter , tangent_setter)
-        MeshVertex.binormal = property(binormal_getter , binormal_setter)
-        MeshPolygon.tangent = property(tangent_getter , tangent_setter)
-        MeshPolygon.binormal = property(binormal_getter , binormal_setter)
-    
-    def generate_tangent_binormal(self, mesh , uv_layer_name = ""):
-        """Generate tangent and binormal vectors and add them as new 'tangent' and 'binormal' properties to each vertex and face on the mesh"""
+    def generate_tangent_binormal(self, mesh , face_vectors_out, vextex_vectors_out, uv_layer_name = ""):
         uv_layer = None
         try:
             if uv_layer_name != "":
@@ -50,48 +16,74 @@ class NormalMapHelper():
         if uv_layer == None:
             raise Exception("There must be at least one UV layer to calculate tangent and binormal vectors")
             
-        for polygon in mesh.polygons:
-            v0 = mesh.vertices[ polygon.vertices[0] ].co
-            v1 = mesh.vertices[ polygon.vertices[1] ].co
-            v2 = mesh.vertices[ polygon.vertices[2] ].co
+        if (len(face_vectors_out) < len(mesh.polygons)):
+            raise Exception("\"face_vectors_out\" must be an array of at least %d positions" % len(mesh.polygons))
+
+        if (len(vextex_vectors_out) < len(mesh.vertices)):
+            raise Exception("\"vextex_vectors_out\" must be an array of at least %d positions" % len(mesh.vertices))
+
+        for pol_idx in range(len(mesh.polygons)):
+            #    (v2 - v0).(p1 - p0) - (v1 - v0).(p2 - p0)
+            #T = ---------------------------------------
+            #    (u1 - u0).(v2 - v0) - (v1 - v0).(u2 - u0)
             
-            edge1 = v1 - v0
-            edge2 = v2 - v0
+            #    (u2 - u0).(p1 - p0) - (u1 - u0).(p2 - p0)
+            #B = ---------------------------------------
+            #    (v1 - v0).(u2 - u0) - (u1 - u0).(v2 - v0)
+
+            polygon = mesh.polygons[pol_idx]
+
+            p0 = mesh.vertices[ polygon.vertices[0] ].co
+            p1 = mesh.vertices[ polygon.vertices[1] ].co
+            p2 = mesh.vertices[ polygon.vertices[2] ].co
             
-            delta_u1 = uv_layer.data[ polygon.loop_indices[1] ].uv[0] - uv_layer.data[ polygon.loop_indices[0] ].uv[0]
-            delta_v1 = uv_layer.data[ polygon.loop_indices[1] ].uv[1] - uv_layer.data[ polygon.loop_indices[0] ].uv[1]
-            delta_u2 = uv_layer.data[ polygon.loop_indices[2] ].uv[0] - uv_layer.data[ polygon.loop_indices[0] ].uv[0]
-            delta_v2 = uv_layer.data[ polygon.loop_indices[2] ].uv[1] - uv_layer.data[ polygon.loop_indices[0] ].uv[1]
+            u0 = uv_layer.data[ polygon.loop_indices[0] ].uv[0]
+            u1 = uv_layer.data[ polygon.loop_indices[1] ].uv[0]
+            u2 = uv_layer.data[ polygon.loop_indices[2] ].uv[0]
             
-            factor = 1.0 / ( delta_u1 * delta_v2 - delta_u2 * delta_v1 )
+            v0 = uv_layer.data[ polygon.loop_indices[0] ].uv[1]
+            v1 = uv_layer.data[ polygon.loop_indices[1] ].uv[1]
+            v2 = uv_layer.data[ polygon.loop_indices[2] ].uv[1]
             
-            tangent = Vector()
-            tangent[0] = factor * (delta_v2 * edge1[0] - delta_v1 * edge2[0])
-            tangent[1] = factor * (delta_v2 * edge1[1] - delta_v1 * edge2[1])
-            tangent[2] = factor * (delta_v2 * edge1[2] - delta_v1 * edge2[2])
+            tangent = None
+            binormal = None
             
-            binormal = Vector()
-            binormal[0] = factor * (-delta_u2 * edge1[0] - delta_u1 * edge2[0])
-            binormal[1] = factor * (-delta_u2 * edge1[1] - delta_u1 * edge2[1])
-            binormal[2] = factor * (-delta_u2 * edge1[2] - delta_u1 * edge2[2])
+            try:
+                tangent = ((v2 - v0) * (p1 - p0) - (v1 - v0) * (p2 - p0)) / ((u1 - u0) * (v2 - v0) - (v1 - v0) * (u2 - u0))
+            except Exception:
+                tangent = None
             
-            mesh.vertices[ polygon.vertices[0] ].tangent += tangent
-            mesh.vertices[ polygon.vertices[1] ].tangent += tangent
-            mesh.vertices[ polygon.vertices[2] ].tangent += tangent
+            try:
+                binormal = ((u2 - u0) * (p1 - p0) - (u1 - u0) * (p2 - p0)) / ((v1 - v0) * (u2 - u0) - (u1 - u0) * (v2 - v0))
+            except Exception:
+                binormal = None
+                
+            # Store tangent and binormal per vertex
+            if vextex_vectors_out[ polygon.vertices[0] ] == None:
+                vextex_vectors_out[ polygon.vertices[0] ] = [ Vector((0,0,0)) , Vector((0,0,0)) ]
+                
+            if vextex_vectors_out[ polygon.vertices[1] ] == None:
+                vextex_vectors_out[ polygon.vertices[1] ] = [ Vector((0,0,0)) , Vector((0,0,0)) ]
+                
+            if vextex_vectors_out[ polygon.vertices[2] ] == None:
+                vextex_vectors_out[ polygon.vertices[2] ] = [ Vector((0,0,0)) , Vector((0,0,0)) ]
             
-            mesh.vertices[ polygon.vertices[0] ].binormal += binormal
-            mesh.vertices[ polygon.vertices[1] ].binormal += binormal
-            mesh.vertices[ polygon.vertices[2] ].binormal += binormal
+            if tangent != None:
+                vextex_vectors_out[ polygon.vertices[0] ][0] += tangent
+                vextex_vectors_out[ polygon.vertices[1] ][0] += tangent
+                vextex_vectors_out[ polygon.vertices[2] ][0] += tangent
             
-            polygon.tangent = tangent
-            polygon.binormal = binormal
+            if binormal != None:
+                vextex_vectors_out[ polygon.vertices[0] ][1] += binormal
+                vextex_vectors_out[ polygon.vertices[1] ][1] += binormal
+                vextex_vectors_out[ polygon.vertices[2] ][1] += binormal
             
-            # Normalize face vectors
-            polygon.tangent.normalize()
-            polygon.binormal.normalize()
-            
+            # Store tangent and binormal per face
+            if tangent != None and binormal != None:
+                face_vectors_out[pol_idx] = [tangent.normalized() , binormal.normalized()]
     
         # Normalize vertex vectors
-        for v in mesh.vertices:
-            v.tangent.normalize()
-            v.binormal.normalize()
+        for vectors in vextex_vectors_out:
+            vectors[0].normalize()
+            vectors[1].normalize()
+

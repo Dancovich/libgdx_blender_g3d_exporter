@@ -1,8 +1,12 @@
+# <pep8 compliant>
+
 import bpy
 import mathutils
 from io_scene_g3d.normal_map_helper import NormalMapHelper
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import (BoolProperty,EnumProperty)
+
+DEBUG = True
 
 class G3DExporter(bpy.types.Operator, ExportHelper):
     """Export scene to G3D (LibGDX) format"""
@@ -167,6 +171,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         file.write("    ,\"materials\": [\n")
         
         firstMaterial = True
+        processed_materials = []
         for obj in bpy.data.objects:
             if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
@@ -175,6 +180,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             m = obj.data
             
             for mat in m.materials:
+                
+                if mat.name in processed_materials:
+                    continue
+                else:
+                    processed_materials.append(mat.name)
+                
                 if firstMaterial:
                     firstMaterial = False
                     file.write("        ")
@@ -259,15 +270,23 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     def write_meshes(self, file, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
         
+        if DEBUG: print("Writing \"meshes\" section")
+        
         # Starting meshes section
         file.write("    \"meshes\": [\n")
         
         # Select what meshes to export (all or only selected) and triangulate meshes prior to exporting.
         # We clone the mesh when triangulating, so we need to clean up after this
-        tri_meshes = []
+        tri_meshes = {}
         for obj in bpy.data.objects:
             if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
+            
+            # If we already processed the mesh data associated with this object, continue (ex: multiple objects pointing to same mesh data)
+            if obj.data.name in tri_meshes.keys():
+                continue
+            
+            if DEBUG: print("Writing mesh data for object %s" % (obj.name))
             
             current_mesh = obj.to_mesh(context.scene , True, 'PREVIEW', calc_tessface=False)
             self.mesh_triangulate(current_mesh)
@@ -276,6 +295,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             if len(current_mesh.uv_layers) > 0:
                 uv_layer_name = ""
                 if len(current_mesh.uv_layers) > 1:
+                    if DEBUG: print("Generating tangent and binormal vectors")
+                    
                     # Search for a texture with normal mapping, if one doesn't exist use the first UV layer available
                     for mat in current_mesh.materials:
                         for slot in mat.texture_slots:
@@ -296,15 +317,16 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 face_tangent_binormal = None
                 vertex_tangent_binormal = None
 
-            tri_meshes.append( [obj.data.name,current_mesh,face_tangent_binormal,vertex_tangent_binormal] )
+            tri_meshes[obj.data.name] = [current_mesh,face_tangent_binormal,vertex_tangent_binormal]
 
         # Now we have triangulated our meshes and generated tangent and binormal vectors. Export them.
         firstMesh = True
-        for tri_mesh in tri_meshes:
-            m_name = tri_mesh[0]
-            m = tri_mesh[1]
-            face_tangent_binormal = tri_mesh[2]
-            vertex_tangent_binormal = tri_mesh[3]
+        for m_name in tri_meshes.keys():
+            tri_mesh = tri_meshes[m_name]
+            m = tri_mesh[0]
+            face_tangent_binormal = tri_mesh[1]
+            vertex_tangent_binormal = tri_mesh[2]
+            
             savedFaces = []
             
             if (firstMesh):
@@ -319,18 +341,29 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # If requested, we will have tangent and binormal attributes
             export_tangent = False
             if self.use_tangent_binormal and face_tangent_binormal != None and vertex_tangent_binormal != None:
+                if DEBUG: print("Writing tangent and binormal attribute headers")
                 file.write(", \"TANGENT\", \"BINORMAL\"")
                 export_tangent = True
-            
+                
             # If we have at least one uvmap, we will have the TEXCOORD attribute.
             uv_count = 0
-            export_texture = False
+            export_texture = 0
             for uv in m.uv_layers:
-                export_texture = True
+                if DEBUG: print("Writing attribute headers for texture coordinate %d" % (uv_count))
+                export_texture = uv_count + 1
                 file.write(", \"TEXCOORD%d\"" % (uv_count))
-                uv_count = uv_count+1
-                
-                
+                uv_count = uv_count + 1
+
+            # If we have bones and weight associated to our vertices, export weight information
+            weight_count = 0
+            for vertex in m.vertices:
+                if len(vertex.groups) > weight_count:
+                    weight_count = len(vertex.groups)
+            
+            for wc in range(weight_count):
+                if DEBUG: print("Writing attribute headers bone weight %d" % (wc))
+                file.write(", \"BLENDWEIGHT%d\"" % (wc))
+
             # Start writing vertices of this mesh
             file.write("],\n")
             file.write("            \"vertices\": [\n")
@@ -345,14 +378,16 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     vi = pol.vertices[vPos]
                     
                     if self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not pol.use_smooth):
+                        if DEBUG: print("Writing face normals for current vertex")
                         v_normal = pol.normal
                     elif self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth):
+                        if DEBUG: print("Writing vertex normals for current vertex")
                         v_normal = m.vertices[vi].normal
 
-                    if export_tangent and self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not pol.use_smooth):
+                    if export_tangent and (self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not pol.use_smooth)):
                         v_tangent = face_tangent_binormal[faceIdx][0]
                         v_binormal = face_tangent_binormal[faceIdx][1]
-                    elif export_tangent and self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth):
+                    elif export_tangent and (self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth)):
                         v_tangent = vertex_tangent_binormal[vi][0]
                         v_binormal = vertex_tangent_binormal[vi][1]
 
@@ -367,6 +402,31 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     for uv in m.uv_layers:
                         vertex.append(uv.data[ pol.loop_indices[vPos] ].uv)
                         
+                    if weight_count > 0:
+                        if DEBUG: print("Writing bone weight for this vertex")
+                        weight_data = [[0.000000 , 0.000000]] * weight_count
+
+                        for user in bpy.data.objects:
+                            if user.type == 'MESH' and user.data.name == m_name and user.parent != None and user.parent.type == 'ARMATURE':
+                                weight_index = 0
+                                for vgroup_idx in range(len(user.vertex_groups)):
+                                    vgroup = user.vertex_groups[vgroup_idx]
+                                    try:
+                                        weight_value = vgroup.weight(vi)
+                                        if DEBUG: print("Found weight for this vertex at vertex group %s (%d). Weight is %f" % (vgroup.name, vgroup.index , weight_value))
+                                        weight_data[ weight_index ] = [ vgroup.index , weight_value ]
+                                        weight_index = weight_index + 1
+                                    except:
+                                        if DEBUG: print("No weight associated for vertex group %s (%d)." % (vgroup.name , vgroup.index))
+
+                                    if weight_index >= weight_count:
+                                        break
+
+                        if DEBUG: print("Resulting weight data: %s" % (str(weight_data)))
+                        for wd in weight_data:
+                            vertex.append( wd )
+                            if DEBUG: print("Appended weight information for vertex. Current vertex data is %s" % (str(vertex)))
+
                     newPos = 0
                     try:
                         newPos = vertices.index(vertex)
@@ -380,22 +440,27 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
              
             # Now we write those vertices to the "vertices" section of the file
             for vPos in range(len(vertices)):
+                last_pos = 0
+                
                 v = vertices[vPos]
                 file.write("                ")
                 file.write("%s, %s, %s, " % (self.float_to_str.format(v[0][0]) , self.float_to_str.format(v[0][1]) , self.float_to_str.format(v[0][2])))
                 file.write("%s, %s, %s" % (self.float_to_str.format(v[1][0]) , self.float_to_str.format(v[1][1]) , self.float_to_str.format(v[1][2])))
+                last_pos = 1
 
                 if export_tangent:
                     file.write(", %s, %s, %s" % (self.float_to_str.format(v[2][0]) , self.float_to_str.format(v[2][1]), self.float_to_str.format(v[2][2])))
                     file.write(", %s, %s, %s" % (self.float_to_str.format(v[3][0]) , self.float_to_str.format(v[3][1]), self.float_to_str.format(v[3][2])))
+                    last_pos = 3
                 
-                if export_texture:
-                    start_pos = 2
-                    if export_tangent:
-                        start_pos = 4
-
-                    for uvpos in range(start_pos , len(v)):
-                        file.write(", %s, %s" % (self.float_to_str.format(v[uvpos][0]) , self.float_to_str.format(v[uvpos][1])))
+                for uvpos in range(last_pos+1 , last_pos + 1 + export_texture):
+                    last_pos = uvpos
+                    file.write(", %s, %s" % (self.float_to_str.format(v[uvpos][0]) , self.float_to_str.format(v[uvpos][1])))
+                        
+                if weight_count:
+                    for weight_pos in range(last_pos + 1 , last_pos + 1 + weight_count):
+                        last_pos = weight_pos
+                        file.write(", %s, %s" % (self.float_to_str.format(v[weight_pos][0]) , self.float_to_str.format(v[weight_pos][1])))
                 
                 if (vPos < len(vertices)-1):
                     file.write(",\n")
@@ -445,8 +510,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         file.write("    ]\n")
         
         # Cleaning up
-        for tri_mesh in tri_meshes:
-            bpy.data.meshes.remove(tri_mesh[1])
+        for m_name in tri_meshes.keys():
+            tri_mesh = tri_meshes[m_name]
+            bpy.data.meshes.remove(tri_mesh[0])
         tri_meshes = None
         
     def write_animations(self, file):
@@ -458,6 +524,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         # Ending animations section
         file.write("    ]\n")
         
+    def has_bone(self , armature , bone_name):
+        """Return if the given armature has a bone with the given name"""
+        found_bone = False
+        try:
+            armature[bone_name]
+            found_bone = True
+        except:
+            found_bone = False
+            
+        return found_bone
+    
     def mesh_triangulate(self, me):
         import bmesh
         bm = bmesh.new()

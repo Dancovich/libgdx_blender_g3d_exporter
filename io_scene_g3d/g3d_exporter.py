@@ -38,7 +38,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             )
     
     filename_ext    = ".g3dj"
-    float_to_str  = "{:8.6f}"
     
     # Our output file. We save as a python dictionary and then use the JSON module to export it as a JSON file
     output = None
@@ -58,6 +57,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         self.write_meshes(context)
         self.write_materials()
         self.write_nodes()
+        self.write_armatures()
         self.write_animations()
         #output_file.close()
         
@@ -72,41 +72,61 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         output_file.close()
 
         return result
-
-    def write_nodes(self):
-        """Writes a 'nodes' section, the section that will relate meshes to objects and materials"""
+    
+    def _write_node_child_object(self, parent):
+        """Return an array with all children of the parent object. Parent object must be a mesh object"""
         
-        if DEBUG: print("Writing nodes")
+        #
+        # This code can be improved. Currently this method is essentialy the same as the
+        # "write_nodes" method, but was separated to not overwelm the original method with specific
+        # logic to diferentiate a root node from a child node.
+        #
         
-        for obj in bpy.data.objects:
+        if parent == None or parent.type != 'MESH':
+            raise Exception("Parent must be a mesh type object")
+        
+        children = []
+        
+        for obj in parent.children:
             if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
             
             current_node = {}
             
             current_node["id"] = obj.name
+            
+            # Get the transformation relative to the parent and decompose it
+            location = [0,0,0]
+            rotation_quaternion = [1,0,0,0]
+            scale = [1,1,1]
+            try:
+                location, rotation_quaternion, scale = obj.matrix_local.decompose()
+            except:
+                pass
 
-            # Convert our rotation to a quaternion, after exporting we go back to the old value
-            old_rot_mode = obj.rotation_mode
-            obj.rotation_mode = 'QUATERNION'
-            if ( not self.test_default_quaternion( obj.rotation_quaternion )):
+            # Export rotation
+            if ( not self.test_default_quaternion( rotation_quaternion )):
                 # Do this so that json module can export
                 current_node["rotation"] = []
-                current_node["rotation"].extend(obj.rotation_quaternion)
-            obj.rotation_mode = old_rot_mode
-                
+                current_node["rotation"].extend(rotation_quaternion)
+
             # Exporting scale if there is one
-            if ( not self.test_default_scale( obj.scale )):
+            if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
-                current_node["scale"].extend(obj.scale)
+                current_node["scale"].extend( scale )
 
             # Exporting translation if there is one
-            if ( not self.test_default_transform( obj.location )):
+            if ( not self.test_default_transform( location )):
                 current_node["translation"] = []
-                current_node["translation"].extend(obj.location)
-
+                current_node["translation"].extend(location)
+                
+            # Exporting node children
+            child_list = self._write_node_child_object(obj)
+            if child_list != None and len(child_list) > 0:
+                current_node["children"] = child_list
+                
+            # Exporting node parts
             current_node["parts"] = []
-            
             for mat in obj.data.materials:
                 current_part = {}
                 
@@ -130,12 +150,326 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             current_slot.append( slotidx )
                     
                     current_part["uvMapping"].append( current_slot )
+                
+                # Appending this part to the current node
+                current_node["parts"].append( current_part )
+            
+            # Appending current node to children list
+            children.append(current_node)
+            
+        # At the end return the exported children
+        return children
+        
+
+    def write_nodes(self):
+        """Writes a 'nodes' section, the section that will relate meshes to objects and materials"""
+        
+        if DEBUG: print("Writing nodes")
+        
+        # Let's export our objects as nodes
+        for obj in bpy.data.objects:
+            if obj.type != 'MESH' or (self.use_selection and not obj.select):
+                continue
+            
+            # If this object has a parent and the parent is selected, we will export it as a child and skip it here.
+            # Otherwise we ignore the parenting and export it as a standalone object.
+            if obj.parent != None and obj.parent.type == 'MESH' and ((self.use_selection and obj.parent.select) or not self.use_selection):
+                continue
+            
+            current_node = {}
+            
+            current_node["id"] = obj.name
+
+            location = [0,0,0]
+            rotation_quaternion = [1,0,0,0]
+            scale = [1,1,1]
+            try:
+                location, rotation_quaternion, scale = obj.matrix_world.decompose()
+            except:
+                pass
+            
+            # Exporting rotation if there is one
+            if ( not self.test_default_quaternion( rotation_quaternion )):
+                # Do this so that json module can export
+                current_node["rotation"] = []
+                current_node["rotation"].extend(rotation_quaternion)
+                
+            # Exporting scale if there is one
+            if ( not self.test_default_scale( scale )):
+                current_node["scale"] = []
+                current_node["scale"].extend(scale)
+
+            # Exporting translation if there is one
+            if ( not self.test_default_transform( location )):
+                current_node["translation"] = []
+                current_node["translation"].extend(location)
+
+            # Exporting node children
+            child_list = self._write_node_child_object(obj)
+            if child_list != None and len(child_list) > 0:
+                current_node["children"] = child_list
+
+            # Exporting node parts
+            current_node["parts"] = []
+            for mat in obj.data.materials:
+                current_part = {}
+                
+                current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , mat.name) )
+                current_part["materialid"] = ( "Material__%s" % (mat.name) )
+                    
+                # Start writing uv mapping
+                if len(obj.data.uv_layers) > 0:
+                    current_part["uvMapping"] = []
+                
+                for uvidx in range(len(obj.data.uv_layers)):
+                    uv = obj.data.uv_layers[uvidx]
+                    current_slot = []
+
+                    for slotidx in range(len(mat.texture_slots)):
+                        slot = mat.texture_slots[slotidx]
+                        if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                            continue
+                        
+                        if (slot.uv_layer == uv.name or (slot.uv_layer == "" and uvidx == 0)):
+                            current_slot.append( slotidx )
+                    
+                    current_part["uvMapping"].append( current_slot )
+                
+                # Start writing bones
+                if len(obj.vertex_groups) > 0:
+                    for vgroup in obj.vertex_groups:
+                        #Try to find an armature with a bone associated with this vertex group
+                        if obj.parent != None and obj.parent.type == 'ARMATURE':
+                            armature = obj.parent.data
+                            try:
+                                bone = armature.bones[vgroup.name]
+                                
+                                #Referencing the bone node
+                                current_bone = {}
+                                current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
+                                if DEBUG: print("Exporting bone %s" % (vgroup.name))
+                                
+                                transform_matrix = mathutils.Matrix.Identity(4)
+                                
+                                if bone.parent == None:
+                                    transform_matrix = bone.matrix_local
+                                else:
+                                    bone_parenting = [bone]
+                                    child_bone = bone
+                                    while child_bone.parent != None:
+                                        bone_parenting.insert(0 , child_bone.parent)
+                                        child_bone = child_bone.parent
+                                    
+                                    transform_matrix = bone_parenting[0].matrix_local
+                                    for bone_pos in range(1,len(bone_parenting)):
+                                        transform_matrix = transform_matrix.inverted() * bone_parenting[bone_pos].matrix_local
+    
+                                bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+                                current_bone["translation"] = []
+                                current_bone["translation"].extend(bone_location)
+                                current_bone["rotation"] = []
+                                current_bone["rotation"].extend(bone_quaternion)
+                                current_bone["scale"] = []
+                                current_bone["scale"].extend(bone_scale)
+                                
+                                # Appending resulting bone to part
+                                try:
+                                    current_part["bones"].append( current_bone )
+                                except:
+                                    current_part["bones"] = [current_bone]
+
+                            except KeyError:
+                                if DEBUG: print("Vertex group %s has no corresponding bone" % (vgroup.name))
+                            except:
+                                if DEBUG: print("Unexpected error exporting bone:" , vgroup.name)
 
                 # Appending this part to the current node
                 current_node["parts"].append( current_part )
             
             # Finish this node and append it to the nodes section
             self.output["nodes"].append( current_node )
+            
+    def write_armatures(self):
+        """Writes armatures as invisible nodes (armatures have no parts)"""
+        
+        if DEBUG: print("Writing armature nodes")
+        
+        for armature in bpy.data.objects:
+            if armature.type != 'ARMATURE':
+                continue
+            
+            # If armature have a selected object as a child we export it regardless of it being
+            # selected and "export selected only" is checked. Otherwise it is only exported
+            # if it's selected
+            export_armature = False
+            if self.use_selection and not armature.select:
+                for child in armature.children:
+                    if child.select:
+                        export_armature = True
+                        break
+            else:
+                export_armature = True
+
+            if not export_armature:
+                continue
+                
+            # If this armature has a parent and the parent is selected, we will export it as a child and skip it here.
+            # Otherwise we ignore the parenting and export it as a standalone object.
+            if armature.parent != None and ((self.use_selection and armature.parent.select) or not self.use_selection):
+                continue
+            
+            current_node = {}
+            current_node["id"] = armature.name
+            
+            location = [0,0,0]
+            rotation_quaternion = [1,0,0,0]
+            scale = [1,1,1]
+            try:
+                location, rotation_quaternion, scale = armature.matrix_world.decompose()
+            except:
+                pass
+            
+            # Exporting rotation if there is one
+            if ( not self.test_default_quaternion( rotation_quaternion )):
+                # Do this so that json module can export
+                current_node["rotation"] = []
+                current_node["rotation"].extend(rotation_quaternion)
+                
+            # Exporting scale if there is one
+            if ( not self.test_default_scale( scale )):
+                current_node["scale"] = []
+                current_node["scale"].extend(scale)
+
+            # Exporting translation if there is one
+            if ( not self.test_default_transform( location )):
+                current_node["translation"] = []
+                current_node["translation"].extend(location)
+                
+            # Exporting child armatures
+            if len(armature.children) > 0:
+                armature_children = self._write_armature_children(armature)
+                if len(armature_children) > 0:
+                    current_node["children"] = armature_children
+                
+            # Exporting bones as childs
+            bone_children = self.write_bone_nodes(armature)
+            if len(bone_children) > 0:
+                try:
+                    current_node["children"].extend(bone_children)
+                except:
+                    current_node["children"] = bone_children
+        
+        # Finish this node and append it to the nodes section
+        self.output["nodes"].append( current_node )
+        
+    def _write_armature_children(self, parent_armature):
+        armature_nodes = []
+
+        for armature in parent_armature.children:
+            if armature.type != 'ARMATURE':
+                continue
+            
+            # If armature have a selected object as a child we export it regardless of it being
+            # selected and "export selected only" is checked. Otherwise it is only exported
+            # if it's selected
+            export_armature = False
+            if self.use_selection and not armature.select:
+                for child in armature.children:
+                    if child.select:
+                        export_armature = True
+                        break
+            else:
+                export_armature = True
+
+            if not export_armature:
+                continue
+                
+            current_node = {}
+            current_node["id"] = armature.name
+            
+            location = [0,0,0]
+            rotation_quaternion = [1,0,0,0]
+            scale = [1,1,1]
+            try:
+                location, rotation_quaternion, scale = armature.matrix_local.decompose()
+            except:
+                pass
+            
+            # Exporting rotation if there is one
+            if ( not self.test_default_quaternion( rotation_quaternion )):
+                # Do this so that json module can export
+                current_node["rotation"] = []
+                current_node["rotation"].extend(rotation_quaternion)
+                
+            # Exporting scale if there is one
+            if ( not self.test_default_scale( scale )):
+                current_node["scale"] = []
+                current_node["scale"].extend(scale)
+
+            # Exporting translation if there is one
+            if ( not self.test_default_transform( location )):
+                current_node["translation"] = []
+                current_node["translation"].extend(location)
+                
+            # Exporting child armatures
+            if len(armature.children) > 0:
+                armature_children = self._write_armature_children(armature)
+                if len(armature_children) > 0:
+                    current_node["children"] = armature_children
+                
+            # Exporting bones as childs
+            bone_children = self.write_bone_nodes(armature)
+            if len(bone_children) > 0:
+                try:
+                    current_node["children"].extend(bone_children)
+                except:
+                    current_node["children"] = bone_children
+            
+            armature_nodes.append(current_node)
+        
+        return armature_nodes
+                
+    def write_bone_nodes(self, armature, parent_bone = None):
+        bone_nodes = []
+        
+        for bone in armature.data.bones:
+            if bone.parent != parent_bone:
+                continue
+            
+            current_bone = {}
+            current_bone["id"] = ("%s__%s" % (armature.name , bone.name))
+            
+            transform_matrix = mathutils.Matrix.Identity(4)
+            
+            if bone.parent == None:
+                transform_matrix = bone.matrix_local
+            else:
+                bone_parenting = [bone]
+                child_bone = bone
+                while child_bone.parent != None:
+                    bone_parenting.insert(0 , child_bone.parent)
+                    child_bone = child_bone.parent
+                
+                transform_matrix = bone_parenting[0].matrix_local
+                for bone_pos in range(1,len(bone_parenting)):
+                    transform_matrix = transform_matrix.inverted() * bone_parenting[bone_pos].matrix_local
+
+            bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+            current_bone["translation"] = []
+            current_bone["translation"].extend(bone_location)
+            current_bone["rotation"] = []
+            current_bone["rotation"].extend(bone_quaternion)
+            current_bone["scale"] = []
+            current_bone["scale"].extend(bone_scale)
+            
+            if len(bone.children) > 0:
+                bone_children = self.write_bone_nodes(armature , parent_bone = bone)
+                if len(bone_children) > 0:
+                    current_bone["children"] = bone_children
+            
+            bone_nodes.append(current_bone)
+            
+        return bone_nodes
 
     def write_materials(self):
         """Write a 'material' section for each material attached to at least a mesh in the scene"""
@@ -425,17 +759,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         """Write an 'animations' section for each animation in the scene"""
         if DEBUG: print("Writing animations")
         
-    def has_bone(self , armature , bone_name):
-        """Return if the given armature has a bone with the given name"""
-        found_bone = False
-        try:
-            armature[bone_name]
-            found_bone = True
-        except:
-            found_bone = False
-            
-        return found_bone
-    
     def mesh_triangulate(self, me):
         import bmesh
         bm = bmesh.new()

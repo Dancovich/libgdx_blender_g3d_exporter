@@ -111,18 +111,20 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Export rotation
             if ( not self.test_default_quaternion( rotation_quaternion )):
                 # Do this so that json module can export
-                current_node["rotation"] = []
-                current_node["rotation"].extend(rotation_quaternion)
+                current_node["rotation"] = self.adjust_quaternion(rotation_quaternion)
+                self.fmtl(current_node["rotation"])
 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
                 current_node["scale"].extend( scale )
+                self.fmtl(current_node["scale"])
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
                 current_node["translation"] = []
                 current_node["translation"].extend(location)
+                self.fmtl(current_node["translation"])
                 
             # Exporting node children
             child_list = self._write_node_child_object(obj)
@@ -195,18 +197,20 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Exporting rotation if there is one
             if ( not self.test_default_quaternion( rotation_quaternion )):
                 # Do this so that json module can export
-                current_node["rotation"] = []
-                current_node["rotation"].extend(rotation_quaternion)
+                current_node["rotation"] = self.adjust_quaternion(rotation_quaternion)
+                self.fmtl(current_node["rotation"])
                 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
                 current_node["scale"].extend(scale)
+                self.fmtl(current_node["scale"])
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
                 current_node["translation"] = []
                 current_node["translation"].extend(location)
+                self.fmtl(current_node["translation"])
 
             # Exporting node children
             child_list = self._write_node_child_object(obj)
@@ -253,28 +257,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
                                 if DEBUG: print("Exporting bone %s" % (vgroup.name))
                                 
-                                transform_matrix = mathutils.Matrix.Identity(4)
+                                #transform_matrix = self.get_transform_from_bone(bone)
+                                transform_matrix = bone.matrix_local
                                 
-                                if bone.parent == None:
-                                    transform_matrix = bone.matrix_local
-                                else:
-                                    bone_parenting = [bone]
-                                    child_bone = bone
-                                    while child_bone.parent != None:
-                                        bone_parenting.insert(0 , child_bone.parent)
-                                        child_bone = child_bone.parent
-                                    
-                                    transform_matrix = bone_parenting[0].matrix_local
-                                    for bone_pos in range(1,len(bone_parenting)):
-                                        transform_matrix = transform_matrix.inverted() * bone_parenting[bone_pos].matrix_local
-    
                                 bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+                                
                                 current_bone["translation"] = []
                                 current_bone["translation"].extend(bone_location)
-                                current_bone["rotation"] = []
-                                current_bone["rotation"].extend(bone_quaternion)
+                                self.fmtl(current_bone["translation"])
+                                
+                                current_bone["rotation"] = self.adjust_quaternion(bone_quaternion)
+                                self.fmtl(current_bone["rotation"])
+                                
                                 current_bone["scale"] = []
                                 current_bone["scale"].extend(bone_scale)
+                                self.fmtl(current_bone["scale"])
                                 
                                 # Appending resulting bone to part
                                 try:
@@ -336,18 +333,20 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Exporting rotation if there is one
             if ( not self.test_default_quaternion( rotation_quaternion )):
                 # Do this so that json module can export
-                current_node["rotation"] = []
-                current_node["rotation"].extend(rotation_quaternion)
+                current_node["rotation"] = self.adjust_quaternion(rotation_quaternion)
+                self.fmtl(current_node["rotation"])
                 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
                 current_node["scale"].extend(scale)
+                self.fmtl(current_node["scale"])
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
                 current_node["translation"] = []
                 current_node["translation"].extend(location)
+                self.fmtl(current_node["translation"])
                 
             # Exporting child armatures
             if len(armature.children) > 0:
@@ -402,18 +401,20 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Exporting rotation if there is one
             if ( not self.test_default_quaternion( rotation_quaternion )):
                 # Do this so that json module can export
-                current_node["rotation"] = []
-                current_node["rotation"].extend(rotation_quaternion)
+                current_node["rotation"] = self.adjust_quaternion(rotation_quaternion)
+                self.fmtl(current_node["rotation"])
                 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
                 current_node["scale"].extend(scale)
+                self.fmtl(current_node["scale"])
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
                 current_node["translation"] = []
                 current_node["translation"].extend(location)
+                self.fmtl(current_node["translation"])
                 
             # Exporting child armatures
             if len(armature.children) > 0:
@@ -442,29 +443,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             current_bone = {}
             current_bone["id"] = ("%s__%s" % (armature.name , bone.name))
-            
-            transform_matrix = mathutils.Matrix.Identity(4)
-            
-            if bone.parent == None:
-                transform_matrix = bone.matrix_local
-            else:
-                bone_parenting = [bone]
-                child_bone = bone
-                while child_bone.parent != None:
-                    bone_parenting.insert(0 , child_bone.parent)
-                    child_bone = child_bone.parent
-                
-                transform_matrix = bone_parenting[0].matrix_local
-                for bone_pos in range(1,len(bone_parenting)):
-                    transform_matrix = transform_matrix.inverted() * bone_parenting[bone_pos].matrix_local
+
+            transform_matrix = self.get_transform_from_bone(bone)
 
             bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+            
             current_bone["translation"] = []
             current_bone["translation"].extend(bone_location)
-            current_bone["rotation"] = []
-            current_bone["rotation"].extend(bone_quaternion)
+            self.fmtl(current_bone["translation"])
+            
+            current_bone["rotation"] = self.adjust_quaternion(bone_quaternion)
+            self.fmtl(current_bone["rotation"])
+            
             current_bone["scale"] = []
             current_bone["scale"].extend(bone_scale)
+            self.fmtl(current_bone["scale"])
             
             if len(bone.children) > 0:
                 bone_children = self.write_bone_nodes(armature , parent_bone = bone)
@@ -496,22 +489,26 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
                 current_material["id"] = ( "Material__%s" % (mat.name) )
                 current_material["ambient"] = [ mat.ambient , mat.ambient , mat.ambient ]
+                self.fmtl(current_material["ambient"])
                 
                 current_material["diffuse"] = []
                 current_material["diffuse"].extend(mat.diffuse_color)
+                self.fmtl(current_material["diffuse"])
                 
                 current_material["specular"] = []
                 current_material["specular"].extend(mat.specular_color)
+                self.fmtl(current_material["specular"])
                 
                 current_material["emissive"] = [mat.emit , mat.emit , mat.emit]
+                self.fmtl(current_material["emissive"])
                 
-                current_material["shininess"] = mat.specular_intensity
+                current_material["shininess"] = self.fmtf(mat.specular_intensity)
 
                 if mat.raytrace_mirror.use:
-                    current_material["reflection"] = mat.raytrace_mirror.reflect_factor
+                    current_material["reflection"] = self.fmtf(mat.raytrace_mirror.reflect_factor)
 
                 if mat.use_transparency:
-                    current_material["opacity"] = mat.alpha
+                    current_material["opacity"] = self.fmtf(mat.alpha)
                     
                 if len(mat.texture_slots)  > 0:
                     current_material["textures"] = []
@@ -726,6 +723,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Now we write those vertices to the "vertices" section of the file
             for vertex in vertices:
                 current_mesh["vertices"].extend(vertex)
+                self.fmtl( current_mesh["vertices"] )
              
             # Now we write the "parts" section, one part for every material
             current_mesh["parts"] = []
@@ -798,6 +796,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     current_bone["boneId"] = ("%s__%s" % (armature.name , bone.name))
                     current_bone["keyframes"] = []
                     
+                    #pose_transform_matrix = self.get_transform_from_bone(bone)
+                    
                     location = self.find_fcurve(action,bone,self.P_LOCATION)
                     rotation = self.find_fcurve(action,bone,self.P_ROTATION)
                     scale = self.find_fcurve(action,bone,self.P_SCALE)
@@ -805,20 +805,19 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     for keyframe in range(int(action.frame_range[0]) , int(action.frame_range[1]+1)):
                         current_keyframe = {}
                         
+                        location_value = mathutils.Vector( ([0.0] * 3) )
+                        rotation_value = mathutils.Quaternion([1,0,0,0])
+                        scale_value = mathutils.Vector([1.0] * 3)
+                        
                         if location != None and location != ( [None] * 3 ):
-                            location_value = [0.0] * 3
                             if location[0] != None:
                                 location_value[0] = location[0].evaluate(keyframe)
                             if location[1] != None:
                                 location_value[1] = location[1].evaluate(keyframe)
                             if location[2] != None:
                                 location_value[2] = location[2].evaluate(keyframe)
-                                
-                            if not self.test_default_transform(location_value):
-                                current_keyframe["translation"] = location_value
-                                
+                            
                         if rotation != None and rotation != ( [None] * 4 ):
-                            rotation_value = [1.0 , 0.0 , 0.0 , 0.0]
                             if rotation[0] != None:
                                 rotation_value[0] = rotation[0].evaluate(keyframe)
                             if rotation[1] != None:
@@ -828,11 +827,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             if rotation[3] != None:
                                 rotation_value[3] = rotation[3].evaluate(keyframe)
                             
-                            if not self.test_default_quaternion(rotation_value):
-                                current_keyframe["rotation"] = rotation_value
-                            
                         if scale != None and scale != ( [None] * 3 ):
-                            scale_value = [1.0] * 3
                             if scale[0] != None:
                                 scale_value[0] = scale[0].evaluate(keyframe)
                             if scale[1] != None:
@@ -840,12 +835,65 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             if scale[2] != None:
                                 scale_value[2] = scale[2].evaluate(keyframe)
                             
-                            if not self.test_default_scale(scale_value):
-                                current_keyframe["scale"] = scale_value
+                        current_transform = self.create_matrix(location_value , rotation_value , scale_value)
                         
+                        # If bone have a parent, we need to make the transform relative to the parent
+                        matrix_relative = self.get_transform_from_bone(bone)
+                        final_transform = matrix_relative * current_transform
+                        
+                        location_value , rotation_value , scale_value = final_transform.decompose()
+                        
+                        #loc = mathutils.Vector( location_value )
+                        #rot = mathutils.Quaternion( rotation_value )
+                        #sca = mathutils.Vector( scale_value )
+                        
+                        if not self.test_default_transform(location_value):
+                            current_keyframe["translation"] = []
+                            current_keyframe["translation"].extend(location_value)
+                            self.fmtl(current_keyframe["translation"])
+                            
+                        if not self.test_default_quaternion(rotation_value):
+                            current_keyframe["rotation"] = self.adjust_quaternion(rotation_value)
+                            self.fmtl(current_keyframe["rotation"])
+                            
+                        if not self.test_default_scale(scale_value):
+                            current_keyframe["scale"] = []
+                            current_keyframe["scale"].extend(scale_value)
+                            self.fmtl(current_keyframe["scale"])
+                            
                         # We need to find at least one of those curves to create a keyframe
                         if "translation" in current_keyframe or "rotation" in current_keyframe or "scale" in current_keyframe:
                             current_keyframe["keytime"] = keyframe * frame_time
+                            
+                            # If current frame has the same data as the previous one, ignore it
+                            #different_frame = True
+                            #if len(current_bone["keyframes"]) >= 1:
+                            #    previous_keyframe = current_bone["keyframes"][ len(current_bone["keyframes"])-1 ]
+                            #    loc1 = [0.0] * 3
+                            #    loc2 = [0.0] * 3
+                            #    rot1 = [0.0,0.0,0.0,1.0]
+                            #    rot2 = [0.0,0.0,0.0,1.0]
+                            #    sca1 = [1.0] * 3
+                            #    sca2 = [1.0] * 3
+                            #    
+                            #    if "translation" in previous_keyframe:
+                            #        loc1 = previous_keyframe["translation"]
+                            #    if "rotation" in previous_keyframe:
+                            #        rot1 = previous_keyframe["rotation"]
+                            #    if "scale" in previous_keyframe:
+                            #        sca1 = previous_keyframe["scale"]
+                            #    
+                            #    if "translation" in current_keyframe:
+                            #        loc2 = current_keyframe["translation"]
+                            #    if "rotation" in current_keyframe:
+                            #        rot2 = current_keyframe["rotation"]
+                            #    if "scale" in current_keyframe:
+                            #        sca2 = current_keyframe["scale"]
+                            #        
+                            #    if loc1 == loc2 and rot1 == rot2 and sca1 == sca2:
+                            #        different_frame = False
+                                
+                            #if different_frame:
                             current_bone["keyframes"].append(current_keyframe)
                     
                     # If there is at least one keyframe for this bone, add it's data
@@ -890,6 +938,46 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         bm.to_mesh(me)
         bm.free()
         
+    def create_matrix(self , location_vector , quaternion_vector, scale_vector):
+        """Create a transform matrix from a location vector, a rotation quaternion and a scale vector"""
+        
+        loc = mathutils.Vector(location_vector)
+        
+        if quaternion_vector.__class__ is mathutils.Quaternion:
+            quat = quaternion_vector
+        else:
+            quat = mathutils.Quaternion(quaternion_vector)
+        
+        matrix = mathutils.Matrix.Translation(loc) \
+                   * quat.to_matrix().to_4x4() \
+                   * mathutils.Matrix(( (scale_vector[0],0,0,0) , (0,scale_vector[1],0,0) , (0,0,scale_vector[2],0) , (0,0,0,1) ))
+        
+        return matrix
+    
+    def get_transform_from_bone(self, bone):
+        """Create a transform matrix based on the relative rest position of a bone"""
+        transform_matrix = mathutils.Matrix.Identity(4)
+            
+        if bone.parent == None:
+            transform_matrix = bone.matrix_local
+        else:
+            bone_parenting = [bone]
+            child_bone = bone
+            while child_bone.parent != None:
+                bone_parenting.insert(0 , child_bone.parent)
+                child_bone = child_bone.parent
+            
+            transform_matrix = bone_parenting[0].matrix_local
+            for bone_pos in range(1,len(bone_parenting)):
+                transform_matrix = transform_matrix.inverted() * bone_parenting[bone_pos].matrix_local
+        
+        return transform_matrix
+    
+    def adjust_quaternion(self, quaternion):
+        adjusted_quaternion = [ quaternion.x , quaternion.y , quaternion.z , quaternion.w ]
+        return adjusted_quaternion
+        
+        
     def test_default_quaternion(self, quaternion):
         return quaternion[0] == 1.0 and quaternion[1] == 0.0 and quaternion[2] == 0.0 and quaternion[3] == 0.0
     
@@ -898,3 +986,13 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     
     def test_default_transform(self, transform):
         return transform[0] == 0.0 and transform[1] == 0.0 and transform[2] == 0.0
+    
+    def fmtf(self,value):
+        """Format a float to only consider a certain number of decimal digits"""
+        return value
+    
+    def fmtl(self,value):
+        """Format a list of floats to only consider a certain number of decimal digits"""
+        return None
+        #for i in range(len(value)):
+        #    value[i] = self.fmtf( value[i] )

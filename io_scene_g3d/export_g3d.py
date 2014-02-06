@@ -2,10 +2,13 @@
 
 import bpy
 import mathutils
+from mathutils import Vector,Quaternion,Matrix
 import json
 from io_scene_g3d.normal_map_helper import NormalMapHelper
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import (BoolProperty,EnumProperty)
+from io_scene_g3d.g3d_json_encoder import G3DJsonEncoder
+from io_scene_g3d.mesh_vertex import MeshVertex 
 
 DEBUG = False
 
@@ -46,8 +49,18 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     # Our output file. We save as a python dictionary and then use the JSON module to export it as a JSON file
     output = None
     
+    # We keep the indentation level of lists here, to better format the json file
+    json_indent = 0
+    
+    # Global rounding factor for floats
+    float_round = 6
+    round_string = None
+    
     def execute(self, context):
         """Main method run by Blender to export a G3D file"""
+        
+        # Init json indent value
+        self.json_indent = 0
 
         # Changes Blender to "object" mode
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -56,6 +69,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         result = {'FINISHED'}
         
         self.output = { "version" : [0,1] , "id" : "" , "meshes":[] , "materials":[] , "nodes":[] , "animations":[] }
+        
+        # We use this format string to round floats for exibition
+        self.round_string = "%" + str(self.float_round+3) + "." + str(self.float_round) + "f"
 
         #output_file = open(self.filepath , 'w')
         self.write_meshes(context)
@@ -69,9 +85,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             print("Resulting output")
             print(str(self.output))
             print("Writing file")
-        
+            
         output_file = open(self.filepath , 'w')
-        json_output = json.dumps(self.output , indent=4, sort_keys=True)
+        json_output = json.dumps(self.output , indent=2, sort_keys=True , cls=G3DJsonEncoder, list_indent=self.json_indent, float_round = self.float_round)
         output_file.write(json_output)
         output_file.close()
 
@@ -116,7 +132,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
-                current_node["scale"].extend( scale )
+                current_node["scale"].extend(scale)
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
@@ -199,7 +215,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
                 current_node["scale"] = []
-                current_node["scale"].extend(scale)
+                current_node["scale"].extend( scale )
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
@@ -252,8 +268,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 if DEBUG: print("Exporting bone %s" % (vgroup.name))
                                 
                                 #transform_matrix = self.get_transform_from_bone(bone)
+                                #transform_matrix = obj.parent.matrix_local * bone.matrix_local
                                 transform_matrix = bone.matrix_local
-                                
                                 bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
                                 
                                 current_bone["translation"] = []
@@ -350,8 +366,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 except:
                     current_node["children"] = bone_children
         
-        # Finish this node and append it to the nodes section
-        self.output["nodes"].append( current_node )
+            # Finish this node and append it to the nodes section
+            self.output["nodes"].append( current_node )
         
     def _write_armature_children(self, parent_armature):
         armature_nodes = []
@@ -476,17 +492,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 current_material["diffuse"].extend(mat.diffuse_color)
                 
                 current_material["specular"] = []
-                current_material["specular"].extend(mat.specular_color)
+                current_material["specular"].extend(mat.specular_color * mat.specular_intensity)
                 
                 current_material["emissive"] = [mat.emit , mat.emit , mat.emit]
                 
-                current_material["shininess"] = self.roundf(mat.specular_intensity)
+                current_material["shininess"] = mat.specular_hardness
 
                 if mat.raytrace_mirror.use:
-                    current_material["reflection"] = self.roundf(mat.raytrace_mirror.reflect_factor)
+                    current_material["reflection"] = mat.raytrace_mirror.reflect_factor
 
                 if mat.use_transparency:
-                    current_material["opacity"] = self.roundf(mat.alpha)
+                    current_material["opacity"] = mat.alpha
                     
                 if len(mat.texture_slots)  > 0:
                     current_material["textures"] = []
@@ -498,7 +514,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         continue
                     
                     current_texture["id"] = slot.name
-                    current_texture["filename"] = (slot.texture.image.filepath.replace("//", "", 1))
+                    current_texture["filename"] = ( bpy.path.basename(slot.texture.image.filepath) )
                     
                     usageType = ""
                     
@@ -533,7 +549,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
     def write_meshes(self, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
-        
         if DEBUG: print("Writing \"meshes\" section")
         
         # Select what meshes to export (all or only selected) and triangulate meshes prior to exporting.
@@ -579,161 +594,197 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 vertex_tangent_binormal = None
 
             tri_meshes[obj.data.name] = [current_mesh,face_tangent_binormal,vertex_tangent_binormal]
-
-        # Now we have triangulated our meshes and generated tangent and binormal vectors. Export them.
-        firstMesh = True
-        for m_name in tri_meshes.keys():
-            tri_mesh = tri_meshes[m_name]
-            m = tri_mesh[0]
-            face_tangent_binormal = tri_mesh[1]
-            vertex_tangent_binormal = tri_mesh[2]
-            
-            savedFaces = []
+        
+        # Now for each mesh we export a "mesh" section
+        for mesh_name in tri_meshes.keys():
+            tri_mesh = tri_meshes[mesh_name][0]
+            original_mesh = bpy.data.meshes[mesh_name]
+            face_tangent_binormal = tri_meshes[mesh_name][1]
+            vertex_tangent_binormal = tri_meshes[mesh_name][2]
             
             current_mesh = {}
             current_mesh["attributes"] = []
+            current_mesh["vertices"] = []
+            current_mesh["parts"] = []
             
-            # We will have at least the position and normal of each vertex
+            # We will store vertices prior to exporting here
+            vertices = [None] * len(tri_mesh.vertices)
+            
+            # We store some variables to later export attributes
+            total_weight_amount = 0
+            total_uv_amount = 0
+            has_tangent = False
+            has_binormal = False
+            
+            # For each face we export it's vertices
+            saved_faces = []
+            for face_index in range(len(tri_mesh.polygons)):
+                face = tri_mesh.polygons[face_index]
+                saved_face = [None] * 3
+                
+                for face_vertex in range(len(face.vertices)):
+                    vertex_index = face.vertices[face_vertex]
+                    vertex = tri_mesh.vertices[vertex_index]
+                    
+                    # We will store out new vertex data here
+                    new_vertex = MeshVertex( Vector((1,1,1)) , Vector((1,1,1)) )
+                    
+                    # Defining position
+                    new_vertex.position = vertex.co
+                    
+                    # Defining normals
+                    if self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not face.use_smooth):
+                        if DEBUG: print("Writing face normals for current vertex")
+                        v_normal = face.normal
+                    elif self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and face.use_smooth):
+                        if DEBUG: print("Writing vertex normals for current vertex")
+                        v_normal = vertex.normal
+                    new_vertex.normal = v_normal
+                    
+                    # Defining tangent and binormals
+                    v_tangent = None
+                    v_binormal = None
+                    
+                    if face_tangent_binormal != None and vertex_tangent_binormal != None:
+                        if (self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not face.use_smooth)):
+                            v_tangent = face_tangent_binormal[face_index][0]
+                            v_binormal = face_tangent_binormal[face_index][1]
+                        elif (self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and face.use_smooth)):
+                            v_tangent = vertex_tangent_binormal[vertex_index][0]
+                            v_binormal = vertex_tangent_binormal[vertex_index][1]
+                    
+                    new_vertex.tangent = v_tangent
+                    new_vertex.binormal = v_binormal
+                    has_tangent = new_vertex.tangent != None
+                    has_binormal = new_vertex.binormal != None
+                    
+                    # Defining UV coordinates
+                    uv_amount = 0
+                    if tri_mesh.uv_layers != None and len(tri_mesh.uv_layers) > 0:
+                        new_vertex.texcoord = []
+                        for uv in tri_mesh.uv_layers:
+                            new_vertex.texcoord.append(uv.data[ face.loop_indices[face_vertex] ].uv)
+                            uv_amount = uv_amount + 1
+                    if uv_amount > total_uv_amount:
+                        total_uv_amount = uv_amount
+                            
+                            
+                    # Defining bone weights
+                    new_vertex.blendweight , blend_weight_amount = self.get_bone_weights(original_mesh, vertex_index)
+                    #print(str(new_vertex.blendweight))
+                    if blend_weight_amount > total_weight_amount:
+                        total_weight_amount = blend_weight_amount
+
+                    # We grab a possible existing vertex at the same vertex position as this
+                    old_vertex = vertices[vertex_index]
+
+                    # Now we store our vertex
+                    if old_vertex == None:
+                        # This is a new vertex, save it at its index position
+                        vertices[vertex_index] = new_vertex
+                        saved_face[face_vertex] = vertex_index
+                    elif old_vertex.compare(new_vertex):
+                        # We created the same vertex, ignore it
+                        saved_face[face_vertex] = vertex_index
+                    else:
+                        # We created a vertex with the same position as an old one, but different
+                        # attributes, we need to create it at another position
+                        vertices.append(new_vertex)
+                        saved_face[face_vertex] = len(vertices) - 1
+                        
+                # We just finished processing a face, store it.
+                saved_faces.append(saved_face)
+                
+            # We have extracted all our vertices, store them into the final list
+            for current_vertex in vertices:
+                # First attributes are position and normal
+                current_mesh["vertices"].extend(current_vertex.position)
+                current_mesh["vertices"].extend(current_vertex.normal)
+                
+                # If we have tangent and binormal, they are next
+                if current_vertex.tangent != None:
+                    current_mesh["vertices"].extend(current_vertex.tangent)
+                if current_vertex.binormal != None:
+                    current_mesh["vertices"].extend(current_vertex.binormal)
+                    
+                # Now the UV coordinates
+                if current_vertex.texcoord != None:
+                    for i in range(total_uv_amount):
+                        try:
+                            uv_texcoord = current_vertex.texcoord[i]
+                            if uv_texcoord != None:
+                                current_mesh["vertices"].extend(uv_texcoord)
+                            else:
+                                current_mesh["vertices"].extend([0.0,0.0])
+                        except:
+                            current_mesh["vertices"].extend([0.0,0.0])
+                elif total_uv_amount > 0:
+                    for i in range(total_uv_amount):
+                        current_mesh["vertices"].extend([0.0,0.0])
+                    
+                # Lastly bone weights
+                if current_vertex.blendweight != None:
+                    current_vertex.normalize_weights()
+                    for i in range(total_weight_amount):
+                        try:
+                            blendweight = current_vertex.blendweight[i]
+                            if blendweight != None:
+                                current_mesh["vertices"].extend(blendweight)
+                            else:
+                                current_mesh["vertices"].extend([0.0,0.0])
+                        except:
+                            current_mesh["vertices"].extend([0.0,0.0])
+                elif total_weight_amount > 0:
+                    for i in range(total_weight_amount):
+                        current_mesh["vertices"].extend([0.0,0.0])
+                
+            # Let's create our attributes, we must respect the same order above
             current_mesh["attributes"].append("POSITION")
             current_mesh["attributes"].append("NORMAL")
-
-            # If requested, we will have tangent and binormal attributes
-            export_tangent = False
-            if self.use_tangent_binormal and face_tangent_binormal != None and vertex_tangent_binormal != None:
-                if DEBUG: print("Writing tangent and binormal attribute headers")
-                current_mesh["attributes"].append("TANGENT")
-                current_mesh["attributes"].append("BINORMAL")
-                export_tangent = True
-                
-            # If we have at least one uvmap, we will have the TEXCOORD attribute.
-            uv_count = 0
-            export_texture = 0
-            for uv in m.uv_layers:
-                if DEBUG: print("Writing attribute headers for texture coordinate %d" % (uv_count))
-                export_texture = uv_count + 1
-                current_mesh["attributes"].append( ("TEXCOORD%d" % (uv_count)) )
-                uv_count = uv_count + 1
-
-            # If we have bones and weight associated to our vertices, export weight information
-            weight_count = 0
-            for vertex in m.vertices:
-                if len(vertex.groups) > weight_count:
-                    weight_count = len(vertex.groups)
+            self.json_indent = self.json_indent + 6
             
-            for wc in range(weight_count):
-                if DEBUG: print("Writing attribute headers bone weight %d" % (wc))
-                current_mesh["attributes"].append( ("BLENDWEIGHT%d" % (wc)) )
-
-            # Start writing vertices of this mesh
-            current_mesh["vertices"] = []
-
-            # First we collect vertices from the mesh's faces.
-            vertices = []
-            for faceIdx in range(len(m.polygons)):
-                pol = m.polygons[faceIdx]
-                savedFace = []
-
-                for vPos in range(len(pol.vertices)):
-                    vi = pol.vertices[vPos]
-                    
-                    if self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not pol.use_smooth):
-                        if DEBUG: print("Writing face normals for current vertex")
-                        v_normal = pol.normal
-                    elif self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth):
-                        if DEBUG: print("Writing vertex normals for current vertex")
-                        v_normal = m.vertices[vi].normal
-
-                    if export_tangent and (self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not pol.use_smooth)):
-                        v_tangent = face_tangent_binormal[faceIdx][0]
-                        v_binormal = face_tangent_binormal[faceIdx][1]
-                    elif export_tangent and (self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and pol.use_smooth)):
-                        v_tangent = vertex_tangent_binormal[vi][0]
-                        v_binormal = vertex_tangent_binormal[vi][1]
-
-                    vertex = []
-                    vertex.extend(m.vertices[vi].co)
-                    vertex.extend(v_normal)
-
-                    if export_tangent:
-                        vertex.extend(v_tangent)
-                        vertex.extend(v_binormal)
-
-                    for uv in m.uv_layers:
-                        vertex.extend(uv.data[ pol.loop_indices[vPos] ].uv)
-                        
-                    if weight_count > 0:
-                        if DEBUG: print("Writing bone weight for this vertex")
-                        weight_data = [[0.000000 , 0.000000]] * weight_count
-
-                        for user in bpy.data.objects:
-                            if user.type == 'MESH' and user.data.name == m_name and user.parent != None and user.parent.type == 'ARMATURE':
-                                weight_index = 0
-                                for vgroup_idx in range(len(user.vertex_groups)):
-                                    vgroup = user.vertex_groups[vgroup_idx]
-                                    try:
-                                        weight_value = vgroup.weight(vi)
-                                        if DEBUG: print("Found weight for this vertex at vertex group %s (%d). Weight is %f" % (vgroup.name, vgroup.index , weight_value))
-                                        weight_data[ weight_index ] = [ vgroup.index , weight_value ]
-                                        weight_index = weight_index + 1
-                                    except:
-                                        if DEBUG: print("No weight associated for vertex group %s (%d)." % (vgroup.name , vgroup.index))
-
-                                    if weight_index >= weight_count:
-                                        break
-
-                        if DEBUG: print("Resulting weight data: %s" % (str(weight_data)))
-                        for wd in weight_data:
-                            vertex.extend( wd )
-                            if DEBUG: print("Appended weight information for vertex. Current vertex data is %s" % (str(vertex)))
-
-                    newPos = 0
-                    try:
-                        # A vertex with those exact same values was found, only get it's index and append to the current face
-                        newPos = vertices.index(vertex)
-                    except Exception:
-                        # A new vertex was created, append it to our vertex list
-                        vertices.append(vertex)
-                        newPos = len(vertices)-1
-
-                    savedFace.append(newPos)
-                savedFaces.append(savedFace)
+            if has_tangent:
+                current_mesh["attributes"].append("TANGENT")
+                self.json_indent = self.json_indent + 3
+            if has_binormal:
+                current_mesh["attributes"].append("BINORMAL")
+                self.json_indent = self.json_indent + 3
                 
-            # Now we write those vertices to the "vertices" section of the file
-            for vertex in vertices:
-                current_mesh["vertices"].extend(vertex)
-             
-            # Now we write the "parts" section, one part for every material
+            for i in range(total_uv_amount):
+                current_mesh["attributes"].append( "TEXCOORD%d" % i )
+                self.json_indent = self.json_indent + 2
+                
+            for i in range(total_weight_amount):
+                current_mesh["attributes"].append( "BLENDWEIGHT%d" % i )
+                self.json_indent = self.json_indent + 2
+                
+            # Now let's export all mesh parts. We create a part for each material that is
+            # attached to some vertices, or just one part if we have one material for all vertices
             current_mesh["parts"] = []
-            for mPos in range(len(m.materials)):
-                material = m.materials[mPos]
-                if (material.__class__.__name__ == 'NoneType'):
+            for mPos in range(len(tri_mesh.materials)):
+                material = tri_mesh.materials[mPos]
+                if (material == None):
                     continue
                 
                 current_part = {}
                 
-                current_part["id"] = ("Meshpart__%s__%s" % (m_name , material.name))
+                current_part["id"] = ("Meshpart__%s__%s" % (mesh_name , material.name))
                 current_part["type"] = "TRIANGLES"
                 current_part["indices"] = []
                 
-                for faceIdx in range(len(m.polygons)):
-                    savedFace = savedFaces[faceIdx]
-                    pol = m.polygons[faceIdx]
+                for faceIdx in range(len(tri_mesh.polygons)):
+                    saved_face = saved_faces[faceIdx]
+                    pol = tri_mesh.polygons[faceIdx]
 
                     if (pol.material_index == mPos):
-                        current_part["indices"].extend(savedFace)
+                        current_part["indices"].extend(saved_face)
 
                 # Ending current part
                 current_mesh["parts"].append( current_part )
-                
-            # Ending current mesh
+        
+            # Append the created mesh to the list
             self.output["meshes"].append( current_mesh )
 
-        # Cleaning up
-        for m_name in tri_meshes.keys():
-            tri_mesh = tri_meshes[m_name]
-            bpy.data.meshes.remove(tri_mesh[0])
-        tri_meshes = None
-        
     def write_animations(self,context):
         """Write an 'animations' section for each animation in the scene"""
         if DEBUG: print("Writing animations")
@@ -778,7 +829,14 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     location = self.find_fcurve(action,bone,self.P_LOCATION)
                     rotation = self.find_fcurve(action,bone,self.P_ROTATION)
                     scale = self.find_fcurve(action,bone,self.P_SCALE)
-
+                    
+                    # Rest transform to apply relative pose transform for each frame
+                    rest_transform = self.get_transform_from_bone(bone)
+                    
+                    # Decomposed rest transform
+                    pre_loc,pre_rot,pre_sca = rest_transform.decompose()
+                    
+                    frame_start = context.scene.frame_start
                     for keyframe in range(int(action.frame_range[0]) , int(action.frame_range[1]+1)):
                         current_keyframe = {}
                         
@@ -811,45 +869,35 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 scale_value[1] = scale[1].evaluate(keyframe)
                             if scale[2] != None:
                                 scale_value[2] = scale[2].evaluate(keyframe)
-                                
+                        
                         pose_transform = self.create_matrix(location_value , rotation_value , scale_value)
-                        rest_transform = self.get_transform_from_bone(bone)
                         location_value, rotation_value, scale_value = (rest_transform * pose_transform).decompose()
-                        
-                        location_value = self.roundl(location_value)
-                        rotation_value = self.roundl(rotation_value)
-                        scale_value = self.roundl(scale_value)
-                        
+
                         # Compare current frame to previous one (or to rest position) to optimize keyframes
-                        pre_loc,pre_rot,pre_sca = [None] * 3
                         if len(current_bone["keyframes"]) > 0:
                             previous_frame = current_bone["keyframes"][ len(current_bone["keyframes"])-1 ]
                             if "translation" in previous_frame:
                                 pre_loc = mathutils.Vector(previous_frame["translation"])
                             if "rotation" in previous_frame:
-                                pre_rot = mathutils.Quaternion(previous_frame["rotation"])
+                                # We store the W position at the end, but Blender use it as the first element. We need to switch back
+                                pre_rot = mathutils.Quaternion( ( previous_frame["rotation"][3] , previous_frame["rotation"][0] , previous_frame["rotation"][1] , previous_frame["rotation"][2] ) )
                             if "scale" in previous_frame:
                                 pre_sca = mathutils.Vector(previous_frame["scale"])
-                        else:
-                            pre_loc,pre_rot,pre_sca = pose_transform.decompose()
-                            pre_loc = self.roundl(pre_loc)
-                            pre_rot = self.roundl(pre_rot)
-                            pre_sca = self.roundl(pre_sca)
-                        
-                        if location_value != pre_loc:
+
+                        if not self.compare_vector(location_value, pre_loc):
                             current_keyframe["translation"] = []
                             current_keyframe["translation"].extend(location_value)
                             
-                        if rotation_value != pre_rot:
+                        if not self.compare_quaternion(rotation_value, pre_rot):
                             current_keyframe["rotation"] = self.adjust_quaternion(rotation_value)
                             
-                        if scale_value != pre_sca:
+                        if not self.compare_vector(scale_value, pre_sca):
                             current_keyframe["scale"] = []
                             current_keyframe["scale"].extend(scale_value)
                             
                         # We need to find at least one of those curves to create a keyframe
                         if "translation" in current_keyframe or "rotation" in current_keyframe or "scale" in current_keyframe:
-                            current_keyframe["keytime"] = keyframe * frame_time
+                            current_keyframe["keytime"] = (keyframe - frame_start) * frame_time
                             current_bone["keyframes"].append(current_keyframe)
                     
                     # If there is at least one keyframe for this bone, add it's data
@@ -861,7 +909,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 self.output["animations"].append(current_action)
                     
 
-    def find_fcurve(self, action , bone , property):
+    def find_fcurve(self, action , bone , prop):
         """
         Find a fcurve for the given action, bone and property. Returns an array with as many fcurves
         as there are indices in the property.
@@ -870,12 +918,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
         returned_fcurves = None
         
-        data_path = ("pose.bones[\"%s\"].%s" % (bone.name , property))
-        if property == self.P_LOCATION:
+        data_path = ("pose.bones[\"%s\"].%s" % (bone.name , prop))
+        if prop == self.P_LOCATION:
             returned_fcurves = [None , None , None]
-        elif property == self.P_ROTATION:
+        elif prop == self.P_ROTATION:
             returned_fcurves = [None , None , None, None]
-        elif property == self.P_SCALE:
+        elif prop == self.P_SCALE:
             returned_fcurves = [None , None , None]
         else:
             raise Exception("FCurve Property not supported")
@@ -897,35 +945,35 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     def create_matrix(self , location_vector , quaternion_vector, scale_vector):
         """Create a transform matrix from a location vector, a rotation quaternion and a scale vector"""
         
-        loc = mathutils.Vector(location_vector)
-        
         if quaternion_vector.__class__ is mathutils.Quaternion:
             quat = quaternion_vector
         else:
             quat = mathutils.Quaternion(quaternion_vector)
+            
+        loc_mat = mathutils.Matrix(( (0,0,0,location_vector[0]) \
+                                     , (0,0,0,location_vector[1]) \
+                                     , (0,0,0,location_vector[2]) \
+                                     , (0,0,0,0) ))
         
-        matrix = mathutils.Matrix.Translation(loc) \
-                   * quat.to_matrix().to_4x4() \
-                   * mathutils.Matrix(( (scale_vector[0],0,0,0) , (0,scale_vector[1],0,0) , (0,0,scale_vector[2],0) , (0,0,0,1) ))
+        rot_mat = quat.to_matrix().to_4x4()
+        
+        sca_mat = mathutils.Matrix(( (scale_vector[0],0,0,0) \
+                                     , (0,scale_vector[1],0,0) \
+                                     , (0,0,scale_vector[2],0) \
+                                     , (0,0,0,1) ))
+        
+        matrix = (rot_mat * sca_mat) + loc_mat
         
         return matrix
     
     def get_transform_from_bone(self, bone):
         """Create a transform matrix based on the relative rest position of a bone"""
-        transform_matrix = mathutils.Matrix.Identity(4)
+        transform_matrix = None
             
         if bone.parent == None:
             transform_matrix = bone.matrix_local
         else:
-            bone_parenting = [bone]
-            child_bone = bone
-            while child_bone.parent != None:
-                bone_parenting.insert(0 , child_bone.parent)
-                child_bone = child_bone.parent
-            
-            transform_matrix = bone_parenting[0].matrix_local
-            for bone_pos in range(1,len(bone_parenting)):
-                transform_matrix = transform_matrix.inverted() * bone_parenting[bone_pos].matrix_local
+            transform_matrix = bone.parent.matrix_local.inverted() * bone.matrix_local
         
         return transform_matrix
     
@@ -943,14 +991,49 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     def test_default_transform(self, transform):
         return transform[0] == 0.0 and transform[1] == 0.0 and transform[2] == 0.0
     
-    def roundf(self,value):
-        """Format a float to only consider a certain number of decimal digits"""
-        return round(value , 6)
+    def compare_vector(self,v1,v2):
+        a1 = [ (self.round_string % v1[0]) , (self.round_string % v1[1]) , (self.round_string % v1[2]) ]
+        a2 = [ (self.round_string % v2[0]) , (self.round_string % v2[1]) , (self.round_string % v2[2]) ]
+        return a1 == a2
     
-    def roundl(self, value):
-        """Format a list of floats to only consider a certain number of decimal digits"""
-        new_value = value.__class__()
-        for i in range(len(value)):
-            new_value[i] = round(value[i] , 6)
+    def compare_quaternion(self,q1,q2):
+        a1 = [ (self.round_string % q1[0]) , (self.round_string % q1[1]) , (self.round_string % q1[2]) , (self.round_string % q1[3]) ]
+        a2 = [ (self.round_string % q2[0]) , (self.round_string % q2[1]) , (self.round_string % q2[2]) , (self.round_string % q2[3]) ]
+        return a1 == a2
+    
+    def get_bone_weights(self,mesh,vertex_index):
+        blend_weights = []
+        blend_weight_amount = 0
         
-        return new_value
+        for obj in bpy.data.objects:
+            if obj.type=='MESH' and obj.data.name == mesh.name and obj.parent != None and obj.parent.type == 'ARMATURE':
+                arm_obj = obj.parent
+                bone_index = 0
+                for vertex_group in obj.vertex_groups:
+                    bone = None
+                    try:
+                        bone = arm_obj.data.bones[vertex_group.name]
+                    except:
+                        bone = None
+                    
+                    if bone != None:
+                        try:
+                            bone_weight = vertex_group.weight(vertex_index)
+        
+                            #print("Bone weight for vertex %d in group %s is %d" % (vertex_index,vertex_group.name,vertex_group.weight(vertex_index)))
+                            
+                            blend_weight = Vector(( float(bone_index) , bone_weight ))
+                            blend_weights.append(blend_weight)
+                            blend_weight_amount = blend_weight_amount + 1
+                        except:
+                            pass
+                        finally:
+                            bone_index = bone_index + 1
+
+                # Only one object with armature is supporter per mesh
+                break
+
+        if len(blend_weights) > 0:
+            return blend_weights, blend_weight_amount
+        else:
+            return None, 0

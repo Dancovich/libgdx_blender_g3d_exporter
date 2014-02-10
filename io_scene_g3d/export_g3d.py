@@ -49,9 +49,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     # Our output file. We save as a python dictionary and then use the JSON module to export it as a JSON file
     output = None
     
-    # We keep the indentation level of lists here, to better format the json file
-    json_indent = 0
-    
     # Global rounding factor for floats
     float_round = 6
     round_string = None
@@ -59,9 +56,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         """Main method run by Blender to export a G3D file"""
         
-        # Init json indent value
-        self.json_indent = 0
-
         # Changes Blender to "object" mode
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -87,7 +81,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             print("Writing file")
             
         output_file = open(self.filepath , 'w')
-        json_output = json.dumps(self.output , indent=2, sort_keys=True , cls=G3DJsonEncoder, list_indent=self.json_indent, float_round = self.float_round)
+        json_output = json.dumps(self.output , indent=2, sort_keys=True , cls=G3DJsonEncoder, float_round = self.float_round)
         output_file.write(json_output)
         output_file.close()
 
@@ -131,13 +125,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
-                current_node["scale"] = []
-                current_node["scale"].extend(scale)
+                current_node["scale"] = list(scale)
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
-                current_node["translation"] = []
-                current_node["translation"].extend(location)
+                current_node["translation"] = list(location)
                 
             # Exporting node children
             child_list = self._write_node_child_object(obj)
@@ -214,13 +206,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
-                current_node["scale"] = []
-                current_node["scale"].extend( scale )
+                current_node["scale"] = list(scale)
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
-                current_node["translation"] = []
-                current_node["translation"].extend(location)
+                current_node["translation"] = list(location)
 
             # Exporting node children
             child_list = self._write_node_child_object(obj)
@@ -267,18 +257,14 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
                                 if DEBUG: print("Exporting bone %s" % (vgroup.name))
                                 
-                                #transform_matrix = self.get_transform_from_bone(bone)
-                                #transform_matrix = obj.parent.matrix_local * bone.matrix_local
-                                transform_matrix = bone.matrix_local
+                                transform_matrix = obj.matrix_local.inverted() * bone.matrix_local
                                 bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
                                 
-                                current_bone["translation"] = []
-                                current_bone["translation"].extend(bone_location)
+                                current_bone["translation"] = list(bone_location)
                                 
                                 current_bone["rotation"] = self.adjust_quaternion(bone_quaternion)
                                 
-                                current_bone["scale"] = []
-                                current_bone["scale"].extend(bone_scale)
+                                current_bone["scale"] = list(bone_scale)
                                 
                                 # Appending resulting bone to part
                                 try:
@@ -344,13 +330,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
-                current_node["scale"] = []
-                current_node["scale"].extend(scale)
+                current_node["scale"] = list(scale)
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
-                current_node["translation"] = []
-                current_node["translation"].extend(location)
+                current_node["translation"] = list(location)
                 
             # Exporting child armatures
             if len(armature.children) > 0:
@@ -409,13 +393,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
             # Exporting scale if there is one
             if ( not self.test_default_scale( scale )):
-                current_node["scale"] = []
-                current_node["scale"].extend(scale)
+                current_node["scale"] = list(scale)
 
             # Exporting translation if there is one
             if ( not self.test_default_transform( location )):
-                current_node["translation"] = []
-                current_node["translation"].extend(location)
+                current_node["translation"] = list(location)
                 
             # Exporting child armatures
             if len(armature.children) > 0:
@@ -449,13 +431,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
             bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
             
-            current_bone["translation"] = []
-            current_bone["translation"].extend(bone_location)
+            current_bone["translation"] = list(bone_location)
             
             current_bone["rotation"] = self.adjust_quaternion(bone_quaternion)
             
-            current_bone["scale"] = []
-            current_bone["scale"].extend(bone_scale)
+            current_bone["scale"] = list(bone_scale)
             
             if len(bone.children) > 0:
                 bone_children = self.write_bone_nodes(armature , parent_bone = bone)
@@ -488,12 +468,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 current_material["id"] = ( "Material__%s" % (mat.name) )
                 current_material["ambient"] = [ mat.ambient , mat.ambient , mat.ambient ]
                 
-                current_material["diffuse"] = []
-                current_material["diffuse"].extend(mat.diffuse_color)
+                current_material["diffuse"] = list(mat.diffuse_color)
                 
-                current_material["specular"] = []
-                current_material["specular"].extend(mat.specular_color * mat.specular_intensity)
-                
+                current_material["specular"] = list(mat.specular_color * mat.specular_intensity)
+
                 current_material["emissive"] = [mat.emit , mat.emit , mat.emit]
                 
                 current_material["shininess"] = mat.specular_hardness
@@ -741,22 +719,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Let's create our attributes, we must respect the same order above
             current_mesh["attributes"].append("POSITION")
             current_mesh["attributes"].append("NORMAL")
-            self.json_indent = self.json_indent + 6
             
             if has_tangent:
                 current_mesh["attributes"].append("TANGENT")
-                self.json_indent = self.json_indent + 3
             if has_binormal:
                 current_mesh["attributes"].append("BINORMAL")
-                self.json_indent = self.json_indent + 3
                 
             for i in range(total_uv_amount):
                 current_mesh["attributes"].append( "TEXCOORD%d" % i )
-                self.json_indent = self.json_indent + 2
                 
             for i in range(total_weight_amount):
                 current_mesh["attributes"].append( "BLENDWEIGHT%d" % i )
-                self.json_indent = self.json_indent + 2
                 
             # Now let's export all mesh parts. We create a part for each material that is
             # attached to some vertices, or just one part if we have one material for all vertices
@@ -784,6 +757,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
             # Append the created mesh to the list
             self.output["meshes"].append( current_mesh )
+            
+        # Clean up all triangulated meshes
+        for mesh_key in tri_meshes:
+            tri_mesh = tri_meshes[mesh_key][0]
+            bpy.data.meshes.remove(tri_mesh)
+        tri_meshes = None
 
     def write_animations(self,context):
         """Write an 'animations' section for each animation in the scene"""
@@ -885,15 +864,13 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 pre_sca = mathutils.Vector(previous_frame["scale"])
 
                         if not self.compare_vector(location_value, pre_loc):
-                            current_keyframe["translation"] = []
-                            current_keyframe["translation"].extend(location_value)
+                            current_keyframe["translation"] = list(location_value)
                             
                         if not self.compare_quaternion(rotation_value, pre_rot):
                             current_keyframe["rotation"] = self.adjust_quaternion(rotation_value)
                             
                         if not self.compare_vector(scale_value, pre_sca):
-                            current_keyframe["scale"] = []
-                            current_keyframe["scale"].extend(scale_value)
+                            current_keyframe["scale"] = list(scale_value)
                             
                         # We need to find at least one of those curves to create a keyframe
                         if "translation" in current_keyframe or "rotation" in current_keyframe or "scale" in current_keyframe:

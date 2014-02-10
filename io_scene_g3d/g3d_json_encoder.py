@@ -1,6 +1,6 @@
 import json
 from json.encoder import encode_basestring_ascii, encode_basestring, FLOAT_REPR,\
-    INFINITY, _make_iterencode
+    INFINITY
 
 c_make_encoder = None
 
@@ -8,15 +8,12 @@ class G3DJsonEncoder(json.JSONEncoder):
     """ Json encoder that reads that can print N non-list values before indenting """
     
     float_round = 6
-    list_indent = 0
     float_format = None
     
     def __init__(self, skipkeys=False, ensure_ascii=True,
             check_circular=True, allow_nan=True, sort_keys=False,
-            indent=None, separators=None, default=None, list_indent = 0, float_round = 6):
-        self.list_indent = list_indent
+            indent=None, separators=None, default=None, float_round = 6):
         self.float_round = float_round
-        
         self.float_format = "%" + str(self.float_round+3) + "." + str(self.float_round) + "f"
         
         super().__init__(skipkeys, ensure_ascii,
@@ -77,14 +74,36 @@ class G3DJsonEncoder(json.JSONEncoder):
                 self.key_separator, self.item_separator, self.sort_keys,
                 self.skipkeys, self.allow_nan)
         else:
-            _iterencode = _make_iterencode(
+            _iterencode = _make_iterencode_g3d(
                 markers, self.default, _encoder, self.indent, floatstr,
                 self.key_separator, self.item_separator, self.sort_keys,
-                self.skipkeys, _one_shot, self.list_indent)
+                self.skipkeys, _one_shot)
         return _iterencode(o, 0)
     
-def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
-        _key_separator, _item_separator, _sort_keys, _skipkeys, _one_shot, _list_indent):
+def _count_indent_g3d(json_mesh_value):
+    count_value = 0
+    default_count_value = 6
+    
+    if json_mesh_value != None and json_mesh_value.__class__ is dict and "attributes" in json_mesh_value.keys():
+        for attribute in json_mesh_value["attributes"]:
+            if attribute == "POSITION" or attribute == "NORMAL" \
+                    or attribute == "TANGENT" or attribute == "BINORMAL":
+                count_value = count_value + 3
+            elif attribute == "COLOR":
+                count_value = count_value + 4
+            elif attribute == "COLORPACKED":
+                count_value = count_value + 1
+            elif attribute.startswith("TEXCOORD") or attribute.startswith("BLENDWEIGHT"):
+                count_value = count_value + 2
+    
+    if count_value != 0:
+        return count_value
+    else:
+        return default_count_value
+        
+
+def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
+        _key_separator, _item_separator, _sort_keys, _skipkeys, _one_shot):
     """
       *** Overwrites json.encoder._make_iterencode 
     """
@@ -92,7 +111,7 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
     if _indent is not None and not isinstance(_indent, str):
         _indent = ' ' * _indent
 
-    def _iterencode_list(lst, _current_indent_level):
+    def _iterencode_list(lst, _current_indent_level, _indentate = 6):
         if not lst:
             yield '[]'
             return
@@ -118,7 +137,7 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
                 first = False
             elif lastWasList:
                 buf = separator
-            elif not lastWasList and current_break >= _list_indent:
+            elif not lastWasList and current_break >= _indentate:
                 current_break = 0
                 buf = separator
             else:
@@ -155,7 +174,7 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
                 if isinstance(value, (list, tuple)):
                     chunks = _iterencode_list(value, _current_indent_level)
                 elif isinstance(value, dict):
-                    chunks = _iterencode_dict(value, _current_indent_level)
+                    chunks = _iterencode_dict(value, _current_indent_level, _list_indent = _count_indent_g3d(value))
                 else:
                     chunks = _iterencode(value, _current_indent_level)
                 for chunk in chunks:
@@ -167,7 +186,7 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
         if markers is not None:
             del markers[markerid]
 
-    def _iterencode_dict(dct, _current_indent_level):
+    def _iterencode_dict(dct, _current_indent_level, _list_indent = 6):
         if not dct:
             yield '{}'
             return
@@ -229,11 +248,11 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
                 yield _floatstr(value)
             else:
                 if isinstance(value, (list, tuple)):
-                    chunks = _iterencode_list(value, _current_indent_level)
+                    chunks = _iterencode_list(value, _current_indent_level, _indentate = _list_indent)
                 elif isinstance(value, dict):
-                    chunks = _iterencode_dict(value, _current_indent_level)
+                    chunks = _iterencode_dict(value, _current_indent_level, _list_indent = _count_indent_g3d(value))
                 else:
-                    chunks = _iterencode(value, _current_indent_level)
+                    chunks = _iterencode(value, _current_indent_level, _obj_indent = _count_indent_g3d(value))
                 for chunk in chunks:
                     yield chunk
         if newline_indent is not None:
@@ -243,7 +262,7 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
         if markers is not None:
             del markers[markerid]
 
-    def _iterencode(o, _current_indent_level):
+    def _iterencode(o, _current_indent_level, _obj_indent = 6):
         if isinstance(o, str):
             yield _encoder(o)
         elif o is None:
@@ -257,10 +276,10 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
         elif isinstance(o, float):
             yield _floatstr(o)
         elif isinstance(o, (list, tuple)):
-            for chunk in _iterencode_list(o, _current_indent_level):
+            for chunk in _iterencode_list(o, _current_indent_level, _indentate = _obj_indent):
                 yield chunk
         elif isinstance(o, dict):
-            for chunk in _iterencode_dict(o, _current_indent_level):
+            for chunk in _iterencode_dict(o, _current_indent_level, _list_indent = _count_indent_g3d(o)):
                 yield chunk
         else:
             if markers is not None:

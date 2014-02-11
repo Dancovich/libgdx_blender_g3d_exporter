@@ -37,6 +37,18 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                    ('FACE', "Face Normals", "Each three vertices that compose a face will get the face's normals")),
             default='BLENDER',
             )
+    
+    export_armatures = BoolProperty( \
+            name="Export Armatures", \
+            description="Export armature bones and associated bone weights for each vertex", \
+            default=True, \
+            )
+    
+    export_animations = BoolProperty( \
+            name="Export Actions as Animations", \
+            description="Export each action as an animation section (ignored if Export Armatures is not checked)", \
+            default=True, \
+            )
             
     use_tangent_binormal = BoolProperty( \
             name="Export Tangent and Binormal Vectors", \
@@ -66,13 +78,18 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
         # We use this format string to round floats for exibition
         self.round_string = "%" + str(self.float_round+3) + "." + str(self.float_round) + "f"
-
+        
         #output_file = open(self.filepath , 'w')
         self.write_meshes(context)
         self.write_materials()
         self.write_nodes()
-        self.write_armatures()
-        self.write_animations(context)
+        
+        if self.export_armatures:
+            self.write_armatures()
+        
+        if self.can_export_animations():
+            self.write_animations(context)
+        
         #output_file.close()
         
         if DEBUG:
@@ -244,7 +261,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     current_part["uvMapping"].append( current_slot )
                 
                 # Start writing bones
-                if len(obj.vertex_groups) > 0:
+                if self.export_armatures and len(obj.vertex_groups) > 0:
                     for vgroup in obj.vertex_groups:
                         #Try to find an armature with a bone associated with this vertex group
                         if obj.parent != None and obj.parent.type == 'ARMATURE':
@@ -285,7 +302,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
     def write_armatures(self):
         """Writes armatures as invisible nodes (armatures have no parts)"""
-        
         if DEBUG: print("Writing armature nodes")
         
         for armature in bpy.data.objects:
@@ -542,11 +558,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             if DEBUG: print("Writing mesh data for object %s" % (obj.name))
             
-            current_mesh = obj.to_mesh(context.scene , True, 'PREVIEW', calc_tessface=False)
+            # We can't apply modifiers here because armatures are modifiers, applyig them will screw up the animation
+            current_mesh = obj.to_mesh(context.scene , False, 'PREVIEW', calc_tessface=False)
             self.mesh_triangulate(current_mesh)
             
             # Generate tangent and binormal vectors for this mesh, for this we need at least one UV layer
-            if len(current_mesh.uv_layers) > 0:
+            if self.use_tangent_binormal and len(current_mesh.uv_layers) > 0:
                 uv_layer_name = ""
                 if len(current_mesh.uv_layers) > 1:
                     if DEBUG: print("Generating tangent and binormal vectors")
@@ -648,10 +665,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             
                             
                     # Defining bone weights
-                    new_vertex.blendweight , blend_weight_amount = self.get_bone_weights(original_mesh, vertex_index)
-                    #print(str(new_vertex.blendweight))
-                    if blend_weight_amount > total_weight_amount:
-                        total_weight_amount = blend_weight_amount
+                    if self.export_armatures:
+                        new_vertex.blendweight , blend_weight_amount = self.get_bone_weights(original_mesh, vertex_index)
+                        #print(str(new_vertex.blendweight))
+                        if blend_weight_amount > total_weight_amount:
+                            total_weight_amount = blend_weight_amount
 
                     # We grab a possible existing vertex at the same vertex position as this
                     old_vertex = vertices[vertex_index]
@@ -701,20 +719,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         current_mesh["vertices"].extend([0.0,0.0])
                     
                 # Lastly bone weights
-                if current_vertex.blendweight != None:
-                    current_vertex.normalize_weights()
-                    for i in range(total_weight_amount):
-                        try:
-                            blendweight = current_vertex.blendweight[i]
-                            if blendweight != None:
-                                current_mesh["vertices"].extend(blendweight)
-                            else:
+                if self.export_armatures:
+                    if current_vertex.blendweight != None:
+                        current_vertex.normalize_weights()
+                        for i in range(total_weight_amount):
+                            try:
+                                blendweight = current_vertex.blendweight[i]
+                                if blendweight != None:
+                                    current_mesh["vertices"].extend(blendweight)
+                                else:
+                                    current_mesh["vertices"].extend([0.0,0.0])
+                            except:
                                 current_mesh["vertices"].extend([0.0,0.0])
-                        except:
+                    elif total_weight_amount > 0:
+                        for i in range(total_weight_amount):
                             current_mesh["vertices"].extend([0.0,0.0])
-                elif total_weight_amount > 0:
-                    for i in range(total_weight_amount):
-                        current_mesh["vertices"].extend([0.0,0.0])
                 
             # Let's create our attributes, we must respect the same order above
             current_mesh["attributes"].append("POSITION")
@@ -728,8 +747,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             for i in range(total_uv_amount):
                 current_mesh["attributes"].append( "TEXCOORD%d" % i )
                 
-            for i in range(total_weight_amount):
-                current_mesh["attributes"].append( "BLENDWEIGHT%d" % i )
+            if self.export_armatures:
+                for i in range(total_weight_amount):
+                    current_mesh["attributes"].append( "BLENDWEIGHT%d" % i )
                 
             # Now let's export all mesh parts. We create a part for each material that is
             # attached to some vertices, or just one part if we have one material for all vertices
@@ -773,8 +793,13 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         frame_time = (1 / fps) * 1000
         
         # For each action we export keyframe data.
-        # We don't need to attach the action to the object, we are exporting all actions.
+        # We are exporting all actions, but to avoid exporting deleted actions (actions with ZERO users)
+        # each action must have at least one user. In Blender user the FAKE USER option to assign at least
+        # one user to each action
         for action in bpy.data.actions:
+            if action.users <= 0:
+                continue
+            
             current_action = {}
             current_action["id"] = action.name
             current_action["bones"] = []
@@ -977,6 +1002,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         a1 = [ (self.round_string % q1[0]) , (self.round_string % q1[1]) , (self.round_string % q1[2]) , (self.round_string % q1[3]) ]
         a2 = [ (self.round_string % q2[0]) , (self.round_string % q2[1]) , (self.round_string % q2[2]) , (self.round_string % q2[3]) ]
         return a1 == a2
+    
+    def can_export_animations(self):
+        return self.export_armatures and self.export_animations
     
     def get_bone_weights(self,mesh,vertex_index):
         blend_weights = []

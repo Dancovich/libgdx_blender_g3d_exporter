@@ -540,7 +540,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
                 # Ending current material
                 self.output["materials"].append( current_material )
-            
+
     def write_meshes(self, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
         if DEBUG: print("Writing \"meshes\" section")
@@ -692,7 +692,18 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 saved_faces.append(saved_face)
                 
             # We have extracted all our vertices, store them into the final list
-            for current_vertex in vertices:
+            for current_vertex_index in range(len(vertices)):
+                current_vertex = vertices[current_vertex_index]
+                
+                # If we have an empty space in this list means this vertex is not used in any faces. We can't allow that
+                if current_vertex==None:
+                    bpy.ops.object.mode_set(mode = 'EDIT')
+                    bpy.ops.mesh.select_all(action = 'DESELECT')
+                    bpy.ops.object.mode_set(mode = 'OBJECT')
+                    original_mesh.vertices[current_vertex_index].select = True
+                    bpy.ops.object.mode_set(mode = 'EDIT')
+                    raise Exception("Can't export vertices not associated with any faces.")
+                
                 # First attributes are position and normal
                 current_mesh["vertices"].extend(current_vertex.position)
                 current_mesh["vertices"].extend(current_vertex.normal)

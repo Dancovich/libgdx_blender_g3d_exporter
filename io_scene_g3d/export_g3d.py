@@ -212,7 +212,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             rotation_quaternion = [1,0,0,0]
             scale = [1,1,1]
             try:
-                location, rotation_quaternion, scale = obj.matrix_world.decompose()
+                if obj.parent != None and obj.parent.type == 'ARMATURE' and self.export_armatures:
+                    location, rotation_quaternion, scale = obj.matrix_local.decompose()
+                else:
+                    location, rotation_quaternion, scale = obj.matrix_world.decompose()
             except:
                 pass
             
@@ -508,7 +511,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         continue
                     
                     current_texture["id"] = slot.name
-                    current_texture["filename"] = ( bpy.path.basename(slot.texture.image.filepath) )
+                    current_texture["filename"] = ( self.get_compatible_path(slot.texture.image.filepath) )
                     
                     usageType = ""
                     
@@ -658,7 +661,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     if tri_mesh.uv_layers != None and len(tri_mesh.uv_layers) > 0:
                         new_vertex.texcoord = []
                         for uv in tri_mesh.uv_layers:
-                            new_vertex.texcoord.append(uv.data[ face.loop_indices[face_vertex] ].uv)
+                            # We need to flip UV's because Blender use bottom-left as Y=0 and G3D use top-left
+                            flipped_uv = mathutils.Vector(( uv.data[ face.loop_indices[face_vertex] ].uv[0] \
+                                                            , 1.0 - uv.data[ face.loop_indices[face_vertex] ].uv[1] ))
+                            new_vertex.texcoord.append(flipped_uv)
                             uv_amount = uv_amount + 1
                     if uv_amount > total_uv_amount:
                         total_uv_amount = uv_amount
@@ -1016,6 +1022,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     
     def can_export_animations(self):
         return self.export_armatures and self.export_animations
+    
+    def get_compatible_path(self,path):
+        """Return path minus the '//' prefix, for Windows compatibility"""
+        return path[2:] if path[:2] in {"//", b"//"} else path
     
     def get_bone_weights(self,mesh,vertex_index):
         blend_weights = []

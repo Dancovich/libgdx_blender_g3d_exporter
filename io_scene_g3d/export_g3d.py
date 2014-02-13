@@ -1,8 +1,21 @@
-# <pep8 compliant>
+#################################################################################
+# Copyright 2014 See AUTHORS file.
+#
+# Licensed under the GNU General Public License Version 3.0 (the "LICENSE");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.gnu.org/licenses/gpl-3.0.txt
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#################################################################################
 
 import bpy
 import mathutils
-from mathutils import Vector,Quaternion,Matrix
 import json
 from io_scene_g3d.normal_map_helper import NormalMapHelper
 from bpy_extras.io_utils import ExportHelper
@@ -239,6 +252,52 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
             # Exporting node parts
             current_node["parts"] = []
+            
+            # Export a default node part
+            if obj.data.materials == None or len(obj.data.materials) == 0:
+                current_part = {}
+                
+                current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , "default") )
+                current_part["materialid"] = ( "Material__default"  )
+
+                # Start writing bones
+                if self.export_armatures and len(obj.vertex_groups) > 0:
+                    for vgroup in obj.vertex_groups:
+                        #Try to find an armature with a bone associated with this vertex group
+                        if obj.parent != None and obj.parent.type == 'ARMATURE':
+                            armature = obj.parent.data
+                            try:
+                                bone = armature.bones[vgroup.name]
+                                
+                                #Referencing the bone node
+                                current_bone = {}
+                                current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
+                                if DEBUG: print("Exporting bone %s" % (vgroup.name))
+                                
+                                transform_matrix = obj.matrix_local.inverted() * bone.matrix_local
+                                bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+                                
+                                current_bone["translation"] = list(bone_location)
+                                
+                                current_bone["rotation"] = self.adjust_quaternion(bone_quaternion)
+                                
+                                current_bone["scale"] = list(bone_scale)
+                                
+                                # Appending resulting bone to part
+                                try:
+                                    current_part["bones"].append( current_bone )
+                                except:
+                                    current_part["bones"] = [current_bone]
+
+                            except KeyError:
+                                if DEBUG: print("Vertex group %s has no corresponding bone" % (vgroup.name))
+                            except:
+                                if DEBUG: print("Unexpected error exporting bone:" , vgroup.name)
+
+                # Appending this part to the current node
+                current_node["parts"].append( current_part )
+            
+            # If we have materials export one node part for each material
             for mat in obj.data.materials:
                 current_part = {}
                 
@@ -476,73 +535,91 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Define 'm' as our mesh
             m = obj.data
             
-            for mat in m.materials:
-                current_material = {}
-                
-                if mat.name in processed_materials:
-                    continue
-                else:
-                    processed_materials.append(mat.name)
-                
-                current_material["id"] = ( "Material__%s" % (mat.name) )
-                current_material["ambient"] = [ mat.ambient , mat.ambient , mat.ambient ]
-                
-                current_material["diffuse"] = list(mat.diffuse_color)
-                
-                current_material["specular"] = list(mat.specular_color * mat.specular_intensity)
-
-                current_material["emissive"] = [mat.emit , mat.emit , mat.emit]
-                
-                current_material["shininess"] = mat.specular_hardness
-
-                if mat.raytrace_mirror.use:
-                    current_material["reflection"] = mat.raytrace_mirror.reflect_factor
-
-                if mat.use_transparency:
-                    current_material["opacity"] = mat.alpha
+            if m.materials != None and len(m.materials) > 0:
+                for mat in m.materials:
+                    current_material = {}
                     
-                if len(mat.texture_slots)  > 0:
-                    current_material["textures"] = []
-
-                for slot in mat.texture_slots:
-                    current_texture = {}
-
-                    if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                    if mat.name in processed_materials:
                         continue
-                    
-                    current_texture["id"] = slot.name
-                    current_texture["filename"] = ( self.get_compatible_path(slot.texture.image.filepath) )
-                    
-                    usageType = ""
-                    
-                    if slot.use_map_color_diffuse:
-                        usageType = "DIFFUSE"
-                    elif slot.use_map_normal and slot.texture.use_normal_map:
-                        usageType = "NORMAL"
-                    elif slot.use_map_normal and not slot.texture.use_normal_map:
-                        usageType = "BUMP"
-                    elif slot.use_map_ambient:
-                        usageType = "AMBIENT"
-                    elif slot.use_map_emit:
-                        usageType = "EMISSIVE"
-                    elif slot.use_map_diffuse:
-                        usageType = "REFLECTION"
-                    elif slot.use_map_alpha:
-                        usageType = "TRANSPARENCY"
-                    elif slot.use_map_color_spec:
-                        usageType = "SPECULAR"
-                    elif slot.use_map_specular:
-                        usageType = "SHININESS"
                     else:
-                        usageType = "UNKNOWN"
+                        processed_materials.append(mat.name)
                     
-                    current_texture["type"] = usageType
+                    current_material["id"] = ( "Material__%s" % (mat.name) )
+                    current_material["ambient"] = [ mat.ambient , mat.ambient , mat.ambient ]
                     
-                    # Ending current texture
-                    current_material["textures"].append( current_texture )
+                    current_material["diffuse"] = list(mat.diffuse_color)
+                    
+                    current_material["specular"] = list(mat.specular_color * mat.specular_intensity)
+    
+                    current_material["emissive"] = [mat.emit , mat.emit , mat.emit]
+                    
+                    current_material["shininess"] = mat.specular_hardness
+    
+                    if mat.raytrace_mirror.use:
+                        current_material["reflection"] = mat.raytrace_mirror.reflect_factor
+    
+                    if mat.use_transparency:
+                        current_material["opacity"] = mat.alpha
+                        
+                    if len(mat.texture_slots)  > 0:
+                        current_material["textures"] = []
+    
+                    for slot in mat.texture_slots:
+                        current_texture = {}
+    
+                        if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                            continue
+                        
+                        current_texture["id"] = slot.name
+                        current_texture["filename"] = ( self.get_compatible_path(slot.texture.image.filepath) )
+                        
+                        usageType = ""
+                        
+                        if slot.use_map_color_diffuse:
+                            usageType = "DIFFUSE"
+                        elif slot.use_map_normal and slot.texture.use_normal_map:
+                            usageType = "NORMAL"
+                        elif slot.use_map_normal and not slot.texture.use_normal_map:
+                            usageType = "BUMP"
+                        elif slot.use_map_ambient:
+                            usageType = "AMBIENT"
+                        elif slot.use_map_emit:
+                            usageType = "EMISSIVE"
+                        elif slot.use_map_diffuse:
+                            usageType = "REFLECTION"
+                        elif slot.use_map_alpha:
+                            usageType = "TRANSPARENCY"
+                        elif slot.use_map_color_spec:
+                            usageType = "SPECULAR"
+                        elif slot.use_map_specular:
+                            usageType = "SHININESS"
+                        else:
+                            usageType = "UNKNOWN"
+                        
+                        current_texture["type"] = usageType
+                        
+                        # Ending current texture
+                        current_material["textures"].append( current_texture )
+                    
+                    # Ending current material
+                    self.output["materials"].append( current_material )
+            else:
+                # We don't have materials, export a default one
+                need_export = True
+                for exported_material in self.output["materials"]:
+                    if exported_material["id"] == "Material__default":
+                        need_export = False
+                        break
                 
-                # Ending current material
-                self.output["materials"].append( current_material )
+                if need_export:
+                    current_material = {}
+                    
+                    current_material["id"] = ( "Material__default" )
+                    current_material["ambient"] = [ 1.0, 1.0, 1.0 ]
+                    current_material["diffuse"] = [ 0.8, 0.8, 0.8 ]
+                    current_material["specular"] = [ 0.5, 0.5, 0.5 ]
+                    current_material["emissive"] = [ 0.0, 0.0, 0.0 ]
+                    self.output["materials"].append( current_material )
 
     def write_meshes(self, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
@@ -613,6 +690,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             total_uv_amount = 0
             has_tangent = False
             has_binormal = False
+            has_color = False
             
             # For each face we export it's vertices
             saved_faces = []
@@ -625,7 +703,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     vertex = tri_mesh.vertices[vertex_index]
                     
                     # We will store out new vertex data here
-                    new_vertex = MeshVertex( Vector((1,1,1)) , Vector((1,1,1)) )
+                    new_vertex = MeshVertex( mathutils.Vector((1,1,1)) , mathutils.Vector((1,1,1)) )
                     
                     # Defining position
                     new_vertex.position = vertex.co
@@ -638,6 +716,13 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         if DEBUG: print("Writing vertex normals for current vertex")
                         v_normal = vertex.normal
                     new_vertex.normal = v_normal
+                    
+                    # Defining vertex color
+                    color_map = tri_mesh.vertex_colors.active
+                    if color_map != None:
+                        color_index = face.loop_indices[face_vertex]
+                        new_vertex.color = color_map.data[color_index].color
+                        has_color = True
                     
                     # Defining tangent and binormals
                     v_tangent = None
@@ -714,6 +799,15 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 current_mesh["vertices"].extend(current_vertex.position)
                 current_mesh["vertices"].extend(current_vertex.normal)
                 
+                # If we have color for this vertex, apply it now
+                if has_color:
+                    if current_vertex.color != None:
+                        # Blender doesn't support vertex colors with alpha, so we add the alpha component as 1.0
+                        current_mesh["vertices"].extend(current_vertex.color)
+                        current_mesh["vertices"].append(1.0)
+                    else:
+                        current_mesh["vertices"].extend(mathutils.Vector((1.0,1.0,1.0,1.0)))
+                
                 # If we have tangent and binormal, they are next
                 if current_vertex.tangent != None:
                     current_mesh["vertices"].extend(current_vertex.tangent)
@@ -756,6 +850,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             current_mesh["attributes"].append("POSITION")
             current_mesh["attributes"].append("NORMAL")
             
+            if has_color:
+                current_mesh["attributes"].append("COLOR")
+            
             if has_tangent:
                 current_mesh["attributes"].append("TANGENT")
             if has_binormal:
@@ -771,14 +868,32 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Now let's export all mesh parts. We create a part for each material that is
             # attached to some vertices, or just one part if we have one material for all vertices
             current_mesh["parts"] = []
-            for mPos in range(len(tri_mesh.materials)):
-                material = tri_mesh.materials[mPos]
-                if (material == None):
-                    continue
-                
+            if tri_mesh.materials != None and len(tri_mesh.materials) > 0:
+                for mPos in range(len(tri_mesh.materials)):
+                    material = tri_mesh.materials[mPos]
+                    if (material == None):
+                        continue
+                    
+                    current_part = {}
+                    
+                    current_part["id"] = ("Meshpart__%s__%s" % (mesh_name , material.name))
+                    current_part["type"] = "TRIANGLES"
+                    current_part["indices"] = []
+                    
+                    for faceIdx in range(len(tri_mesh.polygons)):
+                        saved_face = saved_faces[faceIdx]
+                        pol = tri_mesh.polygons[faceIdx]
+    
+                        if (pol.material_index == mPos):
+                            current_part["indices"].extend(saved_face)
+    
+                    # Ending current part
+                    current_mesh["parts"].append( current_part )
+            else:
+                # Create a default part because we don't have a material
                 current_part = {}
-                
-                current_part["id"] = ("Meshpart__%s__%s" % (mesh_name , material.name))
+                    
+                current_part["id"] = ("Meshpart__%s__%s" % (mesh_name , "default"))
                 current_part["type"] = "TRIANGLES"
                 current_part["indices"] = []
                 
@@ -786,8 +901,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     saved_face = saved_faces[faceIdx]
                     pol = tri_mesh.polygons[faceIdx]
 
-                    if (pol.material_index == mPos):
-                        current_part["indices"].extend(saved_face)
+                    current_part["indices"].extend(saved_face)
 
                 # Ending current part
                 current_mesh["parts"].append( current_part )
@@ -1048,7 +1162,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
                             #print("Bone weight for vertex %d in group %s is %d" % (vertex_index,vertex_group.name,vertex_group.weight(vertex_index)))
                             
-                            blend_weight = Vector(( float(bone_index) , bone_weight ))
+                            blend_weight = mathutils.Vector(( float(bone_index) , bone_weight ))
                             blend_weights.append(blend_weight)
                             blend_weight_amount = blend_weight_amount + 1
                         except:

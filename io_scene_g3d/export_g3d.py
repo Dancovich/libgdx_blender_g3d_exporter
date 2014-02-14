@@ -21,7 +21,7 @@ from io_scene_g3d.normal_map_helper import NormalMapHelper
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import (BoolProperty,EnumProperty)
 from io_scene_g3d.g3d_json_encoder import G3DJsonEncoder
-from io_scene_g3d.mesh_vertex import MeshVertex 
+from io_scene_g3d.mesh_vertex import MeshVertex
 
 DEBUG = False
 
@@ -168,6 +168,51 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
             # Exporting node parts
             current_node["parts"] = []
+                
+            # Export a default node part
+            if obj.data.materials == None or len(obj.data.materials) == 0:
+                current_part = {}
+                
+                current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , "default") )
+                current_part["materialid"] = ( "Material__default"  )
+
+                # Start writing bones
+                if self.export_armatures and len(obj.vertex_groups) > 0:
+                    for vgroup in obj.vertex_groups:
+                        #Try to find an armature with a bone associated with this vertex group
+                        if obj.parent != None and obj.parent.type == 'ARMATURE':
+                            armature = obj.parent.data
+                            try:
+                                bone = armature.bones[vgroup.name]
+                                
+                                #Referencing the bone node
+                                current_bone = {}
+                                current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
+                                if DEBUG: print("Exporting bone %s" % (vgroup.name))
+                                
+                                transform_matrix = obj.matrix_local.inverted() * bone.matrix_local
+                                bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+                                
+                                current_bone["translation"] = list(bone_location)
+                                
+                                current_bone["rotation"] = self.adjust_quaternion(bone_quaternion)
+                                
+                                current_bone["scale"] = list(bone_scale)
+                                
+                                # Appending resulting bone to part
+                                try:
+                                    current_part["bones"].append( current_bone )
+                                except:
+                                    current_part["bones"] = [current_bone]
+
+                            except KeyError:
+                                if DEBUG: print("Vertex group %s has no corresponding bone" % (vgroup.name))
+                            except:
+                                if DEBUG: print("Unexpected error exporting bone:" , vgroup.name)
+
+                # Appending this part to the current node
+                current_node["parts"].append( current_part )
+                
             for mat in obj.data.materials:
                 current_part = {}
                 

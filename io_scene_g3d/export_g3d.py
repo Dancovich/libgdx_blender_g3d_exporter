@@ -23,7 +23,11 @@ from bpy.props import (BoolProperty,EnumProperty)
 from io_scene_g3d.g3d_json_encoder import G3DJsonEncoder
 from io_scene_g3d.mesh_vertex import MeshVertex
 
-DEBUG = False
+_DEBUG_ = 3
+_WARN_ = 2
+_ERROR_ = 1
+
+LOG_LEVEL = _WARN_
 
 class G3DExporter(bpy.types.Operator, ExportHelper):
     """Export scene to G3D (LibGDX) format"""
@@ -105,11 +109,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
         #output_file.close()
         
-        if DEBUG:
-            print("Resulting output")
-            print(str(self.output))
-            print("Writing file")
-            
         output_file = open(self.filepath , 'w')
         json_output = json.dumps(self.output , indent=2, sort_keys=True , cls=G3DJsonEncoder, float_round = self.float_round)
         output_file.write(json_output)
@@ -119,7 +118,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     
     def _write_node_child_object(self, parent):
         """Return an array with all children of the parent object. Parent object must be a mesh object"""
-        
         #
         # This code can be improved. Currently this method is essentialy the same as the
         # "write_nodes" method, but was separated to not overwelm the original method with specific
@@ -129,11 +127,15 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         if parent == None or parent.type != 'MESH':
             raise Exception("Parent must be a mesh type object")
         
+        self.debug("Writing child nodes for node %s" % parent.name)
+        
         children = []
         
         for obj in parent.children:
             if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
+            
+            self.debug("Current child node is %s" % obj.name)
             
             current_node = {}
             
@@ -145,7 +147,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             scale = [1,1,1]
             try:
                 location, rotation_quaternion, scale = obj.matrix_local.decompose()
+                self.debug("Node transform is %s" % str(obj.matrix_local))
+                self.debug("Decomposed node transform is %s" % str(obj.matrix_local.decompose()))
             except:
+                self.warn("[WARN] Problem trying to decompose the transform for node %s" % obj.name)
                 pass
 
             # Export rotation
@@ -171,6 +176,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
             # Export a default node part
             if obj.data.materials == None or len(obj.data.materials) == 0:
+                self.warn("[WARN] Node %s doesn't have a material, attaching default material" % obj.name)
                 current_part = {}
                 
                 current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , "default") )
@@ -188,7 +194,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 #Referencing the bone node
                                 current_bone = {}
                                 current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
-                                if DEBUG: print("Exporting bone %s" % (vgroup.name))
                                 
                                 transform_matrix = obj.matrix_local.inverted() * bone.matrix_local
                                 bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
@@ -206,14 +211,15 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                     current_part["bones"] = [current_bone]
 
                             except KeyError:
-                                if DEBUG: print("Vertex group %s has no corresponding bone" % (vgroup.name))
+                                self.warn("Vertex group %s has no corresponding bone" % (vgroup.name))
                             except:
-                                if DEBUG: print("Unexpected error exporting bone:" , vgroup.name)
+                                self.debug("Unexpected error exporting bone: %s" % vgroup.name)
 
                 # Appending this part to the current node
                 current_node["parts"].append( current_part )
                 
             for mat in obj.data.materials:
+                self.debug("Attaching material %s to node %s" % (mat.name, obj.name))
                 current_part = {}
                 
                 current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , mat.name) )
@@ -249,13 +255,13 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
     def write_nodes(self):
         """Writes a 'nodes' section, the section that will relate meshes to objects and materials"""
-        
-        if DEBUG: print("Writing nodes")
-        
+        self.debug("Writing nodes")
         # Let's export our objects as nodes
         for obj in bpy.data.objects:
             if obj.type != 'MESH' or (self.use_selection and not obj.select):
                 continue
+            
+            self.debug("Writing node %s" % obj.name)
             
             # If this object has a parent and the parent is selected, we will export it as a child and skip it here.
             # Otherwise we ignore the parenting and export it as a standalone object.
@@ -271,10 +277,15 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             scale = [1,1,1]
             try:
                 if obj.parent != None and obj.parent.type == 'ARMATURE' and self.export_armatures:
-                    location, rotation_quaternion, scale = obj.matrix_local.decompose()
+                    transform_matrix = obj.matrix_local
                 else:
-                    location, rotation_quaternion, scale = obj.matrix_world.decompose()
+                    transform_matrix = obj.matrix_world
+                    
+                location, rotation_quaternion, scale = transform_matrix.decompose()
+                self.debug("Node transform is %s" % str(transform_matrix))
+                self.debug("Decomposed node transform is %s" % str(transform_matrix.decompose()))
             except:
+                self.warn("[WARN] Error decomposing transform for node %s" % obj.name)
                 pass
             
             # Exporting rotation if there is one
@@ -300,6 +311,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             # Export a default node part
             if obj.data.materials == None or len(obj.data.materials) == 0:
+                self.warn("[WARN] Node %s doesn't have a material, attaching default material" % obj.name)
+                
                 current_part = {}
                 
                 current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , "default") )
@@ -317,7 +330,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 #Referencing the bone node
                                 current_bone = {}
                                 current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
-                                if DEBUG: print("Exporting bone %s" % (vgroup.name))
                                 
                                 transform_matrix = obj.matrix_local.inverted() * bone.matrix_local
                                 bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
@@ -335,15 +347,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                     current_part["bones"] = [current_bone]
 
                             except KeyError:
-                                if DEBUG: print("Vertex group %s has no corresponding bone" % (vgroup.name))
+                                self.warn("Vertex group %s has no corresponding bone" % (vgroup.name))
                             except:
-                                if DEBUG: print("Unexpected error exporting bone:" , vgroup.name)
+                                self.debug("Unexpected error exporting bone: %s" % vgroup.name)
 
                 # Appending this part to the current node
                 current_node["parts"].append( current_part )
             
             # If we have materials export one node part for each material
             for mat in obj.data.materials:
+                self.debug("Attaching material %s to node %s" % (mat.name , obj.name))
+                
                 current_part = {}
                 
                 current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , mat.name) )
@@ -369,6 +383,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
                 # Start writing bones
                 if self.export_armatures and len(obj.vertex_groups) > 0:
+                    self.debug("Writing bones for node %s" % obj.name)
+                    
                     for vgroup in obj.vertex_groups:
                         #Try to find an armature with a bone associated with this vertex group
                         if obj.parent != None and obj.parent.type == 'ARMATURE':
@@ -379,10 +395,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 #Referencing the bone node
                                 current_bone = {}
                                 current_bone["node"] = ("%s__%s" % (obj.parent.name , vgroup.name))
-                                if DEBUG: print("Exporting bone %s" % (vgroup.name))
                                 
                                 transform_matrix = obj.matrix_local.inverted() * bone.matrix_local
                                 bone_location, bone_quaternion, bone_scale = transform_matrix.decompose()
+                                
+                                self.debug("Appending pose bone %s with transform %s" % (vgroup.name , str(transform_matrix)))
                                 
                                 current_bone["translation"] = list(bone_location)
                                 
@@ -397,9 +414,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                     current_part["bones"] = [current_bone]
 
                             except KeyError:
-                                if DEBUG: print("Vertex group %s has no corresponding bone" % (vgroup.name))
+                                self.warn("[WARN] Vertex group %s has no corresponding bone" % (vgroup.name))
                             except:
-                                if DEBUG: print("Unexpected error exporting bone:" , vgroup.name)
+                                self.debug("Unexpected error exporting bone: %s" % vgroup.name)
 
                 # Appending this part to the current node
                 current_node["parts"].append( current_part )
@@ -409,9 +426,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
     def write_armatures(self):
         """Writes armatures as invisible nodes (armatures have no parts)"""
-        if DEBUG: print("Writing armature nodes")
-        
         for armature in bpy.data.objects:
+            self.debug("Writing armature node %s" % armature.name)
+            
             if armature.type != 'ARMATURE':
                 continue
             
@@ -480,6 +497,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         armature_nodes = []
 
         for armature in parent_armature.children:
+            self.debug("Writing child armature %s for armature %s" % (armature.name, parent_armature.name))
+            
             if armature.type != 'ARMATURE':
                 continue
             
@@ -547,6 +566,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             if bone.parent != parent_bone:
                 continue
             
+            if (parent_bone == None):
+                self.debug("Writing bone node %s for armature %s" % (bone.name , armature.name))
+            else:
+                self.debug("Writing bone node %s attached to bone %s" % (bone.name , parent_bone.name))
+            
             current_bone = {}
             current_bone["id"] = ("%s__%s" % (armature.name , bone.name))
 
@@ -582,6 +606,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             if m.materials != None and len(m.materials) > 0:
                 for mat in m.materials:
+                    self.debug("Writing material %s" % mat.name)
+                    
                     current_material = {}
                     
                     if mat.name in processed_materials:
@@ -668,8 +694,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
     def write_meshes(self, context):
         """Write a 'mesh' section for each mesh in the scene, or each mesh on the selected objects."""
-        if DEBUG: print("Writing \"meshes\" section")
-        
         # Select what meshes to export (all or only selected) and triangulate meshes prior to exporting.
         # We clone the mesh when triangulating, so we need to clean up after this
         tri_meshes = {}
@@ -679,9 +703,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             # If we already processed the mesh data associated with this object, continue (ex: multiple objects pointing to same mesh data)
             if obj.data.name in tri_meshes.keys():
+                self.debug("Skipping mesh for node %s (was previously exported)" % obj.name)
                 continue
             
-            if DEBUG: print("Writing mesh data for object %s" % (obj.name))
+            self.debug("Writing mesh for node %s" % obj.name)
             
             # We can't apply modifiers here because armatures are modifiers, applyig them will screw up the animation
             current_mesh = obj.to_mesh(context.scene , False, 'PREVIEW', calc_tessface=False)
@@ -691,8 +716,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             if self.use_tangent_binormal and len(current_mesh.uv_layers) > 0:
                 uv_layer_name = ""
                 if len(current_mesh.uv_layers) > 1:
-                    if DEBUG: print("Generating tangent and binormal vectors")
-                    
                     # Search for a texture with normal mapping, if one doesn't exist use the first UV layer available
                     for mat in current_mesh.materials:
                         for slot in mat.texture_slots:
@@ -755,10 +778,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     
                     # Defining normals
                     if self.use_normals == 'FACE' or (self.use_normals == 'BLENDER' and not face.use_smooth):
-                        if DEBUG: print("Writing face normals for current vertex")
                         v_normal = face.normal
                     elif self.use_normals == 'VERTEX' or (self.use_normals == 'BLENDER' and face.use_smooth):
-                        if DEBUG: print("Writing vertex normals for current vertex")
                         v_normal = vertex.normal
                     new_vertex.normal = v_normal
                     
@@ -962,8 +983,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
 
     def write_animations(self,context):
         """Write an 'animations' section for each animation in the scene"""
-        if DEBUG: print("Writing animations")
-        
         # Save our time per frame (in miliseconds)
         fps = context.scene.render.fps
         frame_time = (1 / fps) * 1000
@@ -975,6 +994,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         for action in bpy.data.actions:
             if action.users <= 0:
                 continue
+            
+            self.debug("Writing animation for action %s" % action.name)
             
             current_action = {}
             current_action["id"] = action.name
@@ -1124,9 +1145,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         """Create a transform matrix from a location vector, a rotation quaternion and a scale vector"""
         
         if quaternion_vector.__class__ is mathutils.Quaternion:
-            quat = quaternion_vector
+            quat = quaternion_vector.normalized()
         else:
-            quat = mathutils.Quaternion(quaternion_vector)
+            quat = mathutils.Quaternion(quaternion_vector).normalized()
             
         loc_mat = mathutils.Matrix(( (0,0,0,location_vector[0]) \
                                      , (0,0,0,location_vector[1]) \
@@ -1141,6 +1162,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                      , (0,0,0,1) ))
         
         matrix = (rot_mat * sca_mat) + loc_mat
+        
+        self.debug("Creating matrix from location, rotation and scale")
+        self.debug("INPUT: Location = %s; Quaternion = %s; Scale = %s" % (str(location_vector), str(quat), str(scale_vector)))
+        self.debug("OUTPUT: %s" % str(matrix))
         
         return matrix
     
@@ -1222,3 +1247,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             return blend_weights, blend_weight_amount
         else:
             return None, 0
+
+    def debug(self, message):
+        if LOG_LEVEL >= _DEBUG_: print(message)
+    
+    def warn(self, message):
+        if LOG_LEVEL >= _WARN_: print(message)
+
+    def error(self, message):
+        if LOG_LEVEL >= _ERROR_: print(message)

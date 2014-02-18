@@ -633,45 +633,53 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         current_material["opacity"] = mat.alpha
                         
                     if len(mat.texture_slots)  > 0:
+                        self.debug("Exporting textures for material %s" % mat.name)
                         current_material["textures"] = []
     
-                    for slot in mat.texture_slots:
-                        current_texture = {}
-    
-                        if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
-                            continue
-                        
-                        current_texture["id"] = slot.name
-                        current_texture["filename"] = ( self.get_compatible_path(slot.texture.image.filepath) )
-                        
-                        usageType = ""
-                        
-                        if slot.use_map_color_diffuse:
-                            usageType = "DIFFUSE"
-                        elif slot.use_map_normal and slot.texture.use_normal_map:
-                            usageType = "NORMAL"
-                        elif slot.use_map_normal and not slot.texture.use_normal_map:
-                            usageType = "BUMP"
-                        elif slot.use_map_ambient:
-                            usageType = "AMBIENT"
-                        elif slot.use_map_emit:
-                            usageType = "EMISSIVE"
-                        elif slot.use_map_diffuse:
-                            usageType = "REFLECTION"
-                        elif slot.use_map_alpha:
-                            usageType = "TRANSPARENCY"
-                        elif slot.use_map_color_spec:
-                            usageType = "SPECULAR"
-                        elif slot.use_map_specular:
-                            usageType = "SHININESS"
-                        else:
-                            usageType = "UNKNOWN"
-                        
-                        current_texture["type"] = usageType
-                        
-                        # Ending current texture
-                        current_material["textures"].append( current_texture )
-                    
+                        for slot in mat.texture_slots:
+                            current_texture = {}
+        
+                            if slot is not None:
+                                self.debug("Found texture %s. Texture coords are %s, texture type is %s" % (slot.name, slot.texture_coords , slot.texture.type) )
+                            
+                            if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                                if slot is not None:
+                                    self.debug("Texture type not supported, skipping" )
+                                else:
+                                    self.debug("Texture slot is empty, skipping" )
+                                continue
+
+                            current_texture["id"] = slot.name
+                            current_texture["filename"] = ( self.get_compatible_path(slot.texture.image.filepath) )
+
+                            usageType = ""
+
+                            if slot.use_map_color_diffuse:
+                                usageType = "DIFFUSE"
+                            elif slot.use_map_normal and slot.texture.use_normal_map:
+                                usageType = "NORMAL"
+                            elif slot.use_map_normal and not slot.texture.use_normal_map:
+                                usageType = "BUMP"
+                            elif slot.use_map_ambient:
+                                usageType = "AMBIENT"
+                            elif slot.use_map_emit:
+                                usageType = "EMISSIVE"
+                            elif slot.use_map_diffuse:
+                                usageType = "REFLECTION"
+                            elif slot.use_map_alpha:
+                                usageType = "TRANSPARENCY"
+                            elif slot.use_map_color_spec:
+                                usageType = "SPECULAR"
+                            elif slot.use_map_specular:
+                                usageType = "SHININESS"
+                            else:
+                                usageType = "UNKNOWN"
+                            
+                            current_texture["type"] = usageType
+
+                            # Ending current texture
+                            current_material["textures"].append( current_texture )
+
                     # Ending current material
                     self.output["materials"].append( current_material )
             else:

@@ -917,6 +917,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             except:
                                 current_mesh["vertices"].extend([0.0,0.0])
                     elif total_weight_amount > 0:
+                        self.warn("[WARN] Found vertex with empty bone weights at (%d, %d, %d)" \
+                              % ( current_vertex.position[0] \
+                                  , current_vertex.position[1] \
+                                  , current_vertex.position[2] ) )
+                        
                         for i in range(total_weight_amount):
                             current_mesh["vertices"].extend([0.0,0.0])
                 

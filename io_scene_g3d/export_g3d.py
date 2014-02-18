@@ -125,6 +125,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         #
         
         if parent == None or parent.type != 'MESH':
+            if parent!=None:
+                self.error("Parent must be a mesh type object, node %s is not of type MESH." % parent.name)
+            else:
+                self.error("Parent must be a mesh type object")
+
             raise Exception("Parent must be a mesh type object")
         
         self.debug("Writing child nodes for node %s" % parent.name)
@@ -150,7 +155,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 self.debug("Node transform is %s" % str(obj.matrix_local))
                 self.debug("Decomposed node transform is %s" % str(obj.matrix_local.decompose()))
             except:
-                self.warn("[WARN] Problem trying to decompose the transform for node %s" % obj.name)
+                self.warn("Problem trying to decompose the transform for node %s" % obj.name)
                 pass
 
             # Export rotation
@@ -176,7 +181,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 
             # Export a default node part
             if obj.data.materials == None or len(obj.data.materials) == 0:
-                self.warn("[WARN] Node %s doesn't have a material, attaching default material" % obj.name)
+                self.warn("Node %s doesn't have a material, attaching default material" % obj.name)
                 current_part = {}
                 
                 current_part["meshpartid"] = ( "Meshpart__%s__%s" % (obj.data.name , "default") )
@@ -285,7 +290,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 self.debug("Node transform is %s" % str(transform_matrix))
                 self.debug("Decomposed node transform is %s" % str(transform_matrix.decompose()))
             except:
-                self.warn("[WARN] Error decomposing transform for node %s" % obj.name)
+                self.warn("Error decomposing transform for node %s" % obj.name)
                 pass
             
             # Exporting rotation if there is one
@@ -311,7 +316,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             # Export a default node part
             if obj.data.materials == None or len(obj.data.materials) == 0:
-                self.warn("[WARN] Node %s doesn't have a material, attaching default material" % obj.name)
+                self.warn("Node %s doesn't have a material, attaching default material" % obj.name)
                 
                 current_part = {}
                 
@@ -414,7 +419,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                     current_part["bones"] = [current_bone]
 
                             except KeyError:
-                                self.warn("[WARN] Vertex group %s has no corresponding bone" % (vgroup.name))
+                                self.warn("Vertex group %s has no corresponding bone" % (vgroup.name))
                             except:
                                 self.debug("Unexpected error exporting bone: %s" % vgroup.name)
 
@@ -867,7 +872,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     bpy.ops.object.mode_set(mode = 'OBJECT')
                     original_mesh.vertices[current_vertex_index].select = True
                     bpy.ops.object.mode_set(mode = 'EDIT')
-                    raise Exception("Can't export vertices not associated with any faces.")
+                    
+                    error_message = "Found vertex not belonging to a face, can't export vertices " \
+                               + "not associated with faces."
+                    self.error(error_message)
+                    raise Exception(error_message)
                 
                 # First attributes are position and normal
                 current_mesh["vertices"].extend(current_vertex.position)
@@ -917,7 +926,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             except:
                                 current_mesh["vertices"].extend([0.0,0.0])
                     elif total_weight_amount > 0:
-                        self.warn("[WARN] Found vertex with empty bone weights at (%d, %d, %d)" \
+                        self.warn("Found vertex with empty bone weights at (%d, %d, %d)" \
                               % ( current_vertex.position[0] \
                                   , current_vertex.position[1] \
                                   , current_vertex.position[2] ) )
@@ -1138,6 +1147,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         elif prop == self.P_SCALE:
             returned_fcurves = [None , None , None]
         else:
+            self.error("FCurve Property not supported")
             raise Exception("FCurve Property not supported")
 
         for fcurve in action.fcurves:
@@ -1262,10 +1272,10 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             return None, 0
 
     def debug(self, message):
-        if LOG_LEVEL >= _DEBUG_: print(message)
+        if LOG_LEVEL >= _DEBUG_: print("[DEBUG] %s" % message)
     
     def warn(self, message):
-        if LOG_LEVEL >= _WARN_: print(message)
+        if LOG_LEVEL >= _WARN_: print("[WARN] %s" % message)
 
     def error(self, message):
-        if LOG_LEVEL >= _ERROR_: print(message)
+        if LOG_LEVEL >= _ERROR_: print("[ERROR] %s" % message)

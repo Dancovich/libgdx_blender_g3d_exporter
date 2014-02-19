@@ -765,6 +765,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             
             # We will store vertices prior to exporting here
             vertices = [None] * len(tri_mesh.vertices)
+            original_vertex_qtd = len(tri_mesh.vertices)
             
             # We store some variables to later export attributes
             total_weight_amount = 0
@@ -855,8 +856,26 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     else:
                         # We created a vertex with the same position as an old one, but different
                         # attributes, we need to create it at another position
-                        vertices.append(new_vertex)
-                        saved_face[face_vertex] = len(vertices) - 1
+                        if len(vertices) > original_vertex_qtd:
+                            # We already created some extra vertices, 
+                            # search among them if we already created this vertex
+                            found_extra_vertex = False
+                            for extra_vertex_idx in range( original_vertex_qtd , len(vertices) ):
+                                extra_vertex = vertices[extra_vertex_idx]
+                                if extra_vertex != None and extra_vertex.compare(new_vertex):
+                                    # We already created this extra vertex, use it
+                                    saved_face[face_vertex] = extra_vertex_idx
+                                    found_extra_vertex = True
+                                    break
+                                
+                            if not found_extra_vertex:
+                                # We need to create this new vertex at the end
+                                vertices.append(new_vertex)
+                                saved_face[face_vertex] = len(vertices) - 1
+                        else:
+                            # This is our first extra vertex, simply append it
+                            vertices.append(new_vertex)
+                            saved_face[face_vertex] = len(vertices) - 1
                         
                 # We just finished processing a face, store it.
                 saved_faces.append(saved_face)
@@ -1238,6 +1257,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         blend_weights = []
         blend_weight_amount = 0
         
+        self.debug("Obtaining bone weights for mesh %s" % mesh.name)
+        
+        zero_weight_str = (self.round_string % 0.0)
         for obj in bpy.data.objects:
             if obj.type=='MESH' and obj.data.name == mesh.name and obj.parent != None and obj.parent.type == 'ARMATURE':
                 arm_obj = obj.parent
@@ -1253,11 +1275,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         try:
                             bone_weight = vertex_group.weight(vertex_index)
         
-                            #print("Bone weight for vertex %d in group %s is %d" % (vertex_index,vertex_group.name,vertex_group.weight(vertex_index)))
+                            self.debug("Bone weight for vertex %d in group %s is %d" % (vertex_index,vertex_group.name,vertex_group.weight(vertex_index)))
                             
-                            blend_weight = mathutils.Vector(( float(bone_index) , bone_weight ))
-                            blend_weights.append(blend_weight)
-                            blend_weight_amount = blend_weight_amount + 1
+                            if (self.round_string % bone_weight) != zero_weight_str:
+                                blend_weight = mathutils.Vector(( float(bone_index) , bone_weight ))
+                                blend_weights.append(blend_weight)
+                                blend_weight_amount = blend_weight_amount + 1
                         except:
                             pass
                         finally:

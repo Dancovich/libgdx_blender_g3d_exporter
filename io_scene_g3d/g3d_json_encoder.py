@@ -98,7 +98,7 @@ class G3DJsonEncoder(json.JSONEncoder):
     
 def _count_indent_g3d(json_mesh_value):
     count_value = 0
-    default_count_value = 6
+    default_count_value = 12
     
     if json_mesh_value != None and json_mesh_value.__class__ is dict and "attributes" in json_mesh_value.keys():
         for attribute in json_mesh_value["attributes"]:
@@ -127,7 +127,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
     if _indent is not None and not isinstance(_indent, str):
         _indent = ' ' * _indent
 
-    def _iterencode_list(lst, _current_indent_level, _indentate = 6):
+    def _iterencode_list(lst, _current_indent_level, _indentate = 12):
         if not lst:
             yield '[]'
             return
@@ -202,7 +202,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
         if markers is not None:
             del markers[markerid]
 
-    def _iterencode_dict(dct, _current_indent_level, _list_indent = 6):
+    def _iterencode_dict(dct, _current_indent_level, _list_indent = 12):
         if not dct:
             yield '{}'
             return
@@ -278,7 +278,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
         if markers is not None:
             del markers[markerid]
 
-    def _iterencode(o, _current_indent_level, _obj_indent = 6):
+    def _iterencode(o, _current_indent_level, _obj_indent = 12):
         if isinstance(o, str):
             yield _encoder(o)
         elif o is None:

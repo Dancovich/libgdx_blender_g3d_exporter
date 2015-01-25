@@ -12,7 +12,7 @@ This addon is currently compatible with Blender v2.69. I can't garantee compatib
 
 This software is licensed under the [GNU General Public License Version 3.0](http://www.gnu.org/licenses/gpl-3.0.txt) (see LICENSE).
 
-### Instalation
+### Installation
 
 You have to install this script as a Blender add-on. To do this copy the *io_scene_g3d* folder into the Blender *../scripts/addons* folder. These are the most common locations for this folder:
 

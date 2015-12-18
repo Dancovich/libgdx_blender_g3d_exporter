@@ -893,7 +893,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     bpy.ops.object.mode_set(mode = 'EDIT')
                     
                     error_message = "Found vertex not belonging to a face, can't export vertices " \
-                               + "not associated with faces."
+                               + "not associated with faces.  (In obj " + mesh_name + ")"
                     self.error(error_message)
                     raise Exception(error_message)
                 
@@ -1251,6 +1251,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     
     def get_compatible_path(self,path):
         """Return path minus the '//' prefix, for Windows compatibility"""
+        path = path.replace('\\', '/')
         return path[2:] if path[:2] in {"//", b"//"} else path
     
     def get_bone_weights(self,mesh,vertex_index):

@@ -11,6 +11,13 @@ class Node(object):
     
     _children = []
     
+    def __init__(self):
+        self._id = ""
+        self._rotation = []
+        self._translation = []
+        self._scale = []
+        self._children = []
+    
     @property
     def id(self):
         return self._id

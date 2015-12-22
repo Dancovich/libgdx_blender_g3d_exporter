@@ -12,6 +12,12 @@ class Model(object):
     
     _animations = []
     
+    def __init__(self):
+        self._meshes = []
+        self._materials = []
+        self._nodes = []
+        self._animations = []
+    
     @property
     def meshes(self):
         return self._meshes

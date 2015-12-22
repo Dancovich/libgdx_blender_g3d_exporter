@@ -1,13 +1,14 @@
-from mathutils import Vector
+from io_scene_g3d.util import Util
 
 class VertexAttribute(object):
     """A vertex attribute"""
     
     _name = None
     
-    _value = Vector()
+    _value = None
     
     """Attribute Types"""
+    ###
     POSITION = "POSITION"
     NORMAL = "NORMAL"
     COLOR = "COLOR"
@@ -15,32 +16,14 @@ class VertexAttribute(object):
     TANGENT = "TANGENT"
     BINORMAL = "BINORMAL"
     
-    TEXCOORD0 = "TEXCOORD0"
-    TEXCOORD1 = "TEXCOORD1"
-    TEXCOORD2 = "TEXCOORD2"
-    TEXCOORD3 = "TEXCOORD3"
-    TEXCOORD4 = "TEXCOORD4"
-    TEXCOORD5 = "TEXCOORD5"
-    TEXCOORD6 = "TEXCOORD6"
-    TEXCOORD7 = "TEXCOORD7"
-    TEXCOORD8 = "TEXCOORD8"
-    TEXCOORD9 = "TEXCOORD9"
+    TEXCOORD = "TEXCOORD"
     
-    BLENDWEIGHT0 = "BLENDWEIGHT0"
-    BLENDWEIGHT1 = "BLENDWEIGHT1"
-    BLENDWEIGHT2 = "BLENDWEIGHT2"
-    BLENDWEIGHT3 = "BLENDWEIGHT3"
-    BLENDWEIGHT4 = "BLENDWEIGHT4"
-    BLENDWEIGHT5 = "BLENDWEIGHT5"
-    BLENDWEIGHT6 = "BLENDWEIGHT6"
-    BLENDWEIGHT7 = "BLENDWEIGHT7"
-    BLENDWEIGHT8 = "BLENDWEIGHT8"
-    BLENDWEIGHT9 = "BLENDWEIGHT9"
-    """"""
+    BLENDWEIGHT = "BLENDWEIGHT"
+    ###
     
-    def __init__(self, name="POSITION", value = [0.0, 0.0, 0.0]):
-        self._name = name
-        self._value = value
+    def __init__(self, name="POSITION", value=[0.0, 0.0, 0.0]):
+        self.name = name
+        self.value = value
     
     @property
     def name(self):
@@ -63,4 +46,24 @@ class VertexAttribute(object):
         if another == None or not isinstance(another, VertexAttribute):
             return False
         
-        return self._name == another._name and self._value == another._value
+        if self.name != another.name:
+            return False
+        
+        if isinstance(self.value, list) and isinstance(another.value, list):
+            if len(self.value) == len(another.value):
+                if len(self.value) == 3:
+                    return Util.compareVector(None, self.value, another.value)
+                elif len(self.value) == 4:
+                    return Util.compareQuaternion(None, self.value, another.value)
+                if len(self.value) == 2:
+                    return self.value == another.value
+                else:
+                    return False
+            else:
+                return False
+        else:
+            return self.value == another.value
+    
+    def __repr__(self):
+        value = "%s {%r}" % (self.name, self.value)
+        return value

@@ -28,7 +28,7 @@ bl_info = {
     "category": "Import-Export"}
 
 import bpy
-from io_scene_g3d.model_generator import G3DExporter
+from io_scene_g3d.g3d_exporter import G3DExporter
 
 class Mesh(object):
     def __init__(self, s):

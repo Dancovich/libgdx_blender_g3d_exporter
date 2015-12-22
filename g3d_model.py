@@ -5,6 +5,9 @@ class G3DModel(object):
     
     _meshes = []
     
+    def __init__(self):
+        self._meshes = []
+    
     def addMesh(self, mesh):
         if mesh == None or not isinstance(mesh, Mesh):
             raise TypeError("'mesh' must be of type Mesh")

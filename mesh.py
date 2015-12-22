@@ -9,6 +9,11 @@ class Mesh(object):
     
     _parts = []
     
+    def __init__(self):
+        self._id = ""
+        self._vertices = []
+        self._parts = []
+    
     @property
     def id(self):
         return self._id
@@ -16,6 +21,10 @@ class Mesh(object):
     @id.setter
     def id(self,meshId):
         self._id = meshId
+        
+    @property
+    def vertices(self):
+        return self._vertices
     
     def addVertex(self,vertex):
         """
@@ -50,8 +59,10 @@ class Mesh(object):
             raise TypeError("'meshPart' must be of type MeshPart")
         
         self._parts.append(meshPart)
+        meshPart.parentMesh = self
         
     def __repr__(self):
-        value = "VERTICES:\n%r" % self._vertices
+        print(self._parts)
+        value = "VERTICES:\n%r\n\nPARTS:\n%r\n\n" % (self._vertices, self._parts)
         
         return value

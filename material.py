@@ -14,7 +14,16 @@ class Material(object):
     
     _specular = []
     
-    _shininess = 1.0
+    _shininess = 0.0
+    
+    def __init__(self):
+        self._id = ""
+        self._ambient = []
+        self._diffuse = []
+        self._emissive = []
+        self._opacity = 1.0
+        self._specular = []
+        self._shininess = 0.0
     
     @property
     def id(self):

@@ -53,11 +53,38 @@ class Vertex(object):
         sameAmountOfAttributes = numMyAttributes == numOtherAttributes
         numEqualAttributeValues = 0
         
+        # HACK Blender generates weird tangent and binormal vectors, usually different
+        # even when a vertex is shared by two perfectly aligned polygons. For that reason
+        # we'll just use the tangent and binormal comparisons if the normals are also different
+        normalIsEqual = False
+        tangentIsEqual = False
+        binormalIsEqual = False
+        
         if (sameAmountOfAttributes):
             for attr in self._attributes:
                 for attr2 in another._attributes:
                     if attr.compare(attr2):
                         numEqualAttributeValues = numEqualAttributeValues + 1
+                        
+                        if attr.name == VertexAttribute.TANGENT:
+                            tangentIsEqual = True
+                        if attr.name == VertexAttribute.BINORMAL:
+                            binormalIsEqual = True
+                        if attr.name == VertexAttribute.NORMAL:
+                            normalIsEqual = True
+                            
+            # Applying the above hack here
+            if normalIsEqual:
+                bonusEqualAttributes = 0
+                
+                if not tangentIsEqual:
+                    bonusEqualAttributes = bonusEqualAttributes + 1
+                if not binormalIsEqual:
+                    bonusEqualAttributes = bonusEqualAttributes + 1
+                    
+                if numEqualAttributeValues + bonusEqualAttributes == numMyAttributes:
+                    numEqualAttributeValues = numEqualAttributeValues + bonusEqualAttributes
+                        
         
         return sameAmountOfAttributes and numEqualAttributeValues == numMyAttributes
     

@@ -7,6 +7,17 @@ class G3DModel(object):
     
     def __init__(self):
         self._meshes = []
+        
+    @property
+    def meshes(self):
+        return self._meshes
+    
+    @meshes.setter
+    def meshes(self, meshes):
+        if meshes == None or not isinstance(meshes, list) or len(meshes)==0 or not isinstance(meshes[0], Mesh):
+            raise TypeError("'meshes' must be a list of Mesh")
+        
+        self._meshes = meshes
     
     def addMesh(self, mesh):
         if mesh == None or not isinstance(mesh, Mesh):

@@ -1,4 +1,7 @@
+import math
+
 from io_scene_g3d.util import Util
+from io_scene_g3d.util import ROUND_STRING
 
 class VertexAttribute(object):
     """A vertex attribute"""
@@ -51,14 +54,25 @@ class VertexAttribute(object):
         
         if isinstance(self.value, list) and isinstance(another.value, list):
             if len(self.value) == len(another.value):
-                if len(self.value) == 3:
-                    return Util.compareVector(None, self.value, another.value)
-                elif len(self.value) == 4:
-                    return Util.compareQuaternion(None, self.value, another.value)
-                if len(self.value) == 2:
-                    return self.value == another.value
-                else:
-                    return False
+                isEqual = True
+                for pos in range(0, len(self.value)):
+                    thisValue = ROUND_STRING % self.value[pos]
+                    otherValue = ROUND_STRING % another.value[pos]
+                    
+                    if thisValue != otherValue:
+                        # handles cases where 0 and -0 are different when compared as strings
+                        if math.fabs(self.value[pos]) - math.fabs(another.value[pos]) == math.fabs(self.value[pos]):
+                            compareThisForZero = ROUND_STRING % math.fabs(self.value[pos])
+                            compareOtherForZero = ROUND_STRING % math.fabs(another.value[pos])
+                            
+                            if compareThisForZero != compareOtherForZero:
+                                isEqual = False
+                                break
+                        else:
+                            isEqual = False
+                            break
+                        
+                return isEqual
             else:
                 return False
         else:

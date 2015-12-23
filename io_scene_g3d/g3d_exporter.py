@@ -95,14 +95,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         self.g3dModel = G3DModel()
         
         # Generate the mesh list of the model
-        self.generateMeshes(context)
+        self.g3dModel.meshes = self.generateMeshes(context)
         
         # Export the nodes
+        # TODO Do the export
         
         return result
     
     
     def generateMeshes(self, context):
+        generatedMeshes = []
+        
         for obj in bpy.data.objects:
             if obj.type != 'MESH' or (self.useSelection and not obj.select):
                 continue
@@ -232,7 +235,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         if colorMap != None:
                             color = [None] * 3
                             color[0], color[1], color[2] = colorMap.data[loopIndex].color
-                            color = Util.roundLists(None, color)
                             
                             attribute = VertexAttribute(name=VertexAttribute.COLOR, value=color)
                             
@@ -250,7 +252,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 flippedUV = [ uv.data[ loopIndex ].uv[0] , 1.0 - uv.data[ loopIndex ].uv[1] ]
                                 
                                 texCoordAttrName = VertexAttribute.TEXCOORD + str(texCoordCount)
-                                attribute = VertexAttribute(texCoordAttrName, Util.roundLists(None, flippedUV))
+                                attribute = VertexAttribute(texCoordAttrName, flippedUV)
                                 
                                 
                                 texCoordCount = texCoordCount + 1
@@ -271,9 +273,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # Clean cloned mesh
             bpy.data.meshes.remove(currentBlMesh)
             
+            # Add generated mesh to returned list
             Util.debug(None, "==== GENERATED MESH IS \n %s" % generatedMesh)
+            generatedMeshes.append(generatedMesh)
                     
-                    
+        # Return list of all meshes
+        return generatedMeshes
+    
+    def generateMaterials(self, context):
+        
+        generatedMaterials = []
+        
+        # TODO Generate material list
+        
+        return generatedMaterials
+        
             
             
     ### UTILITY METHODS
@@ -299,18 +313,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         Destination axis is defined on 'self.vector3AxisMapper' and 'self.vector4AxisMapper' attributes. 
         """
         
-        newCo = [None] * 3
-        
-        valX = float(ROUND_STRING % (co[ self.vector3AxisMapper["x"]["coPos"] ] * self.vector3AxisMapper["x"]["sign"]))
-        valY = float(ROUND_STRING % (co[ self.vector3AxisMapper["y"]["coPos"] ] * self.vector3AxisMapper["y"]["sign"]))
-        valZ = float(ROUND_STRING % (co[ self.vector3AxisMapper["z"]["coPos"] ] * self.vector3AxisMapper["z"]["sign"]))
-        
-        newCo[0] = valX
-        newCo[1] = valY
-        newCo[2] = valZ
+        newCo = [ (co[ self.vector3AxisMapper["x"]["coPos"] ] * self.vector3AxisMapper["x"]["sign"]) \
+                 , (co[ self.vector3AxisMapper["y"]["coPos"] ] * self.vector3AxisMapper["y"]["sign"]) \
+                 , (co[ self.vector3AxisMapper["z"]["coPos"] ] * self.vector3AxisMapper["z"]["sign"]) ]
         
         Util.debug(None, "|=[Converting coordinates from [%s, %s, %s] to [%s, %s, %s]]=|" \
-                   % (ROUND_STRING % co[0],ROUND_STRING % co[1],ROUND_STRING % co[2] \
-                      , ROUND_STRING % valX, ROUND_STRING % valY, ROUND_STRING % valZ))
+                   % (Util.floatToString(None, co[0]),Util.floatToString(None, co[1]),Util.floatToString(None, co[2]) \
+                      , Util.floatToString(None, newCo[0]), Util.floatToString(None, newCo[1]), Util.floatToString(None, newCo[2])))
         
         return newCo

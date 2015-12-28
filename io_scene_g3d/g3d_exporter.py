@@ -1,17 +1,17 @@
 import bpy
-import mathutils
 from bpy_extras.io_utils import ExportHelper
 
 from io_scene_g3d.util import Util
-from io_scene_g3d.util import ROUND_STRING
 from io_scene_g3d.g3d_model import G3DModel
 from io_scene_g3d.mesh import Mesh
 from io_scene_g3d.mesh_part import MeshPart
 from io_scene_g3d.vertex import Vertex
 from io_scene_g3d.vertex_attribute import VertexAttribute
+from io_scene_g3d.material import Material
+from io_scene_g3d.texture import Texture
 
 
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, IntProperty
 
 class G3DExporter(bpy.types.Operator, ExportHelper):
     """Export scene to G3D (LibGDX) format"""
@@ -33,13 +33,29 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             )
     
     
-    bonesPerVertex = 4
+    exportArmature = BoolProperty( \
+            name="Export Armature", \
+            description="Export armature nodes (bones)", \
+            default=False, \
+            )
     
-    exportArmature = True
+    bonesPerVertex = IntProperty( \
+            name="Bone Weights per Vertex", \
+            description="Maximum number of BLENDWEIGHT attributes per vertex. LibGDX default is 4.", \
+            default=4 \
+            )
     
-    exportAnimation = True
+    exportAnimation = BoolProperty( \
+            name="Export Actions as Animation", \
+            description="Export bone actions as animations", \
+            default=False, \
+            )
     
-    generateTangentBinormal = True
+    generateTangentBinormal = BoolProperty( \
+            name="Calculate Tangent and Binormal Vectors", \
+            description="Calculate and export tangent and binormal vectors for normal mapping. Requires UV mapping the mesh.", \
+            default=False, \
+            )
     
     vector3AxisMapper = {}
     
@@ -97,6 +113,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         # Generate the mesh list of the model
         self.g3dModel.meshes = self.generateMeshes(context)
         
+        # Generate the materials used in the model
+        self.g3dModel.materials = self.generateMaterials(context)
+        
         # Export the nodes
         # TODO Do the export
         
@@ -104,27 +123,29 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     
     
     def generateMeshes(self, context):
+        """Reads all MESH type objects and exported the selected ones (or all if 'only selected' isn't checked"""
+        
         generatedMeshes = []
         
-        for obj in bpy.data.objects:
-            if obj.type != 'MESH' or (self.useSelection and not obj.select):
+        for currentObjNode in bpy.data.objects:
+            if currentObjNode.type != 'MESH' or (self.useSelection and not currentObjNode.select):
                 continue
             
             # If we already processed the mesh data associated with this object, continue (ex: multiple objects pointing to same mesh data)
-            if self.g3dModel.hasMesh(obj.data.name):
-                Util.debug(None, "Skipping mesh for node %s (already exported from another node)" % obj.name)
+            if self.g3dModel.hasMesh(currentObjNode.data.name):
+                Util.debug(None, "Skipping mesh for node %s (already exported from another node)" % currentObjNode.name)
                 continue
             
-            Util.debug(None, "Writing mesh from node %s" % obj.name)
+            Util.debug(None, "Writing mesh from node %s" % currentObjNode.name)
             
             # This is the mesh object we are generating
             generatedMesh = Mesh()
-            currentBlMeshName = obj.data.name
+            currentBlMeshName = currentObjNode.data.name
             generatedMesh.id = currentBlMeshName
             
             # Clone mesh to a temporary object. Wel'll apply modifiers and triangulate the
             # clone before exporting.
-            currentBlMesh = obj.to_mesh(context.scene , False, 'PREVIEW', calc_tessface=False)
+            currentBlMesh = currentObjNode.to_mesh(context.scene , False, 'PREVIEW', calc_tessface=False)
             self.meshTriangulate(currentBlMesh)
             
             #currentUVLayer = currentBlMesh.uv_layers[0].data
@@ -170,7 +191,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         attribute = VertexAttribute(VertexAttribute.POSITION, \
                                                     self.convertVector3Coordinate( blVertex.co ))
                         if not currentVertex.add(attribute):
-                            self.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                            Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                         ############
                         
                         ############
@@ -195,14 +216,14 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 attribute = VertexAttribute(name=VertexAttribute.TANGENT,value=self.convertVector3Coordinate(tangent) )
                                 
                                 if not currentVertex.add(attribute):
-                                    self.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                                    Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                                     
                                 binormal = [None] * 3
                                 binormal[0], binormal[1], binormal[2] = blLoop.bitangent
                                 attribute = VertexAttribute(name=VertexAttribute.BINORMAL,value=self.convertVector3Coordinate(binormal) )
                                 
                                 if not currentVertex.add(attribute):
-                                    self.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                                    Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                                     
                                 splitNormalValue = [None] * 3
                                 splitNormalValue[0], splitNormalValue[1], splitNormalValue[2] = blLoop.normal
@@ -226,7 +247,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             attribute.value = self.convertVector3Coordinate(poly.normal)
                             
                         if not currentVertex.add(attribute):
-                            self.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                            Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                         ############
                         
                         ############
@@ -239,7 +260,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             attribute = VertexAttribute(name=VertexAttribute.COLOR, value=color)
                             
                             if not currentVertex.add(attribute):
-                                self.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                                Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                             
                         ############
                         
@@ -258,13 +279,69 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                                 texCoordCount = texCoordCount + 1
                                 
                                 if not currentVertex.add(attribute):
-                                    self.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                                    Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                        ############
+                        
+                        ############
+                        # Exporting bone weights. We only export at most 'self.bonesPerVertex' bones
+                        # for a single vertex.
+                        if self.exportArmature:
+                            Util.debug(None, "    Exporting blend weights for current vertex index %d" % blLoop.vertex_index)
+                            
+                            zeroWeight = Util.floatToString(None,0.0)
+                            blendWeightAttrName = VertexAttribute.BLENDWEIGHT + "%d"
+                            
+                            if currentObjNode.parent != None and currentObjNode.parent.type == 'ARMATURE':
+                                armatureObj = currentObjNode.parent
+                                boneIndex = 0
+
+                                for vertexGroup in currentObjNode.vertex_groups:
+                                    # We can only export this ammount of bones per vertex
+                                    if boneIndex >= self.bonesPerVertex:
+                                        break
+                                    
+                                    # Search for a bone with the same name as a vertex group
+                                    bone = None
+                                    try:
+                                        Util.debug(None, "        Looking for bone with name %s" % vertexGroup.name)
+                                        bone = armatureObj.data.bones[vertexGroup.name]
+                                    except:
+                                        bone = None
+                                    
+                                    if bone != None:
+                                        Util.debug(None, "        Found bone %s" % vertexGroup.name)
+                                        
+                                        try:
+                                            # We get the weight associated with this vertex group. Zeros are ignored
+                                            boneWeight = vertexGroup.weight(blLoop.vertex_index)
+                                            
+                                            Util.debug(None, "        Bone weight for vertex %d in group %s is %f" % (blLoop.vertex_index,vertexGroup.name,vertexGroup.weight(blLoop.vertex_index)))
+
+                                            if Util.floatToString(None, boneWeight) != zeroWeight:
+                                                blendWeightValue = [float(boneIndex), boneWeight]
+                                                attribute = VertexAttribute((blendWeightAttrName % boneIndex), blendWeightValue)
+                                                
+                                                if not currentVertex.add(attribute):
+                                                    Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
+                                                else:
+                                                    boneIndex = boneIndex + 1
+
+                                        except Exception as boneWeightException:
+                                            Util.warn(None, "        Error trying to export bone weight for vertex index %d (%r)" % (blLoop.vertex_index,boneWeightException))
+                                            pass
+                            
+                            # In the end we normalize the bone weights
+                            currentVertex.normalizeBlendWeight()
                         ############
                             
                         
+                        # Adding vertex to global pool of vertices. If vertex is already added
+                        # (it is shared by another polygon and has no different attributes) then the
+                        # already added vertex is returned instead.
                         currentVertex = generatedMesh.addVertex(currentVertex)
                         
-                        Util.debug(None, "Adding vertex (obj id %d) on material %d to mesh part (obj id %d)" % (id(currentVertex),blMaterialIndex,id(currentMeshPart)))
+                        # Make this vertex part of this mesh part.
+                        Util.debug(None, "Adding vertex (currentObjNode id %d) on material %d to mesh part (currentObjNode id %d)" % (id(currentVertex),blMaterialIndex,id(currentMeshPart)))
                         currentMeshPart.addVertex(currentVertex)
                 
                 # Add current part to final mesh
@@ -281,16 +358,116 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         return generatedMeshes
     
     def generateMaterials(self, context):
-        
+        """Read and returns all materials used by the exported objects"""
         generatedMaterials = []
         
-        # TODO Generate material list
+        Util.debug(None, "Generating materials")
+        
+        for currentObjNode in bpy.data.objects:
+            if currentObjNode.type != 'MESH' or (self.useSelection and not currentObjNode.select):
+                continue
+            
+            currentMesh = currentObjNode.data
+            
+            if currentMesh != None and len(currentMesh.materials) > 0:
+                for blMaterial in currentMesh.materials:
+                    currentMaterial = Material()
+                    
+                    currentMaterial.id = blMaterial.name
+                    
+                    currentMaterial.ambient = [blMaterial.ambient, blMaterial.ambient, blMaterial.ambient, 1.0]
+                    
+                    currentMaterial.diffuse = [blMaterial.diffuse_color[0] \
+                                                    ,blMaterial.diffuse_color[1] \
+                                                    ,blMaterial.diffuse_color[2]]
+                    
+                    currentMaterial.specular = [blMaterial.specular_color[0] * blMaterial.specular_intensity \
+                                                    ,blMaterial.specular_color[1] * blMaterial.specular_intensity \
+                                                    ,blMaterial.specular_color[2] * blMaterial.specular_intensity \
+                                                    ,blMaterial.specular_alpha]
+                    
+                    currentMaterial.emissive = [blMaterial.emit\
+                                                    , blMaterial.emit\
+                                                    , blMaterial.emit]
+                    
+                    currentMaterial.shininess = blMaterial.specular_hardness
+                    
+                    if blMaterial.raytrace_mirror.use:
+                        currentMaterial.reflection = [blMaterial.raytrace_mirror.reflect_factor \
+                                                      ,blMaterial.raytrace_mirror.reflect_factor \
+                                                      ,blMaterial.raytrace_mirror.reflect_factor]
+                    
+                    if blMaterial.use_transparency:
+                        currentMaterial.opacity = blMaterial.alpha
+                        
+                    if len(blMaterial.texture_slots)  > 0:
+                        Util.debug(None, "Exporting textures for material %s" % blMaterial.name)
+                        materialTextures = []
+    
+                        for slot in blMaterial.texture_slots:
+                            currentTexture = Texture()
+        
+                            if slot is not None:
+                                Util.debug(None,"Found texture %s. Texture coords are %s, texture type is %s" % (slot.name, slot.texture_coords , slot.texture.type) )
+                            
+                            if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
+                                if slot is not None:
+                                    Util.debug(None,"Texture type not supported, skipping" )
+                                else:
+                                    Util.debug(None,"Texture slot is empty, skipping" )
+                                continue
+
+                            currentTexture.id = slot.name
+                            currentTexture.filename = ( self.getCompatiblePath(slot.texture.image.filepath) )
+
+                            usageType = ""
+
+                            if slot.use_map_color_diffuse:
+                                usageType = "DIFFUSE"
+                            elif slot.use_map_normal and slot.texture.use_normal_map:
+                                usageType = "NORMAL"
+                            elif slot.use_map_normal and not slot.texture.use_normal_map:
+                                usageType = "BUMP"
+                            elif slot.use_map_ambient:
+                                usageType = "AMBIENT"
+                            elif slot.use_map_emit:
+                                usageType = "EMISSIVE"
+                            elif slot.use_map_diffuse:
+                                usageType = "REFLECTION"
+                            elif slot.use_map_alpha:
+                                usageType = "TRANSPARENCY"
+                            elif slot.use_map_color_spec:
+                                usageType = "SPECULAR"
+                            elif slot.use_map_specular:
+                                usageType = "SHININESS"
+                            else:
+                                usageType = "UNKNOWN"
+                            
+                            currentTexture.type = usageType
+
+                            # Ending current texture
+                            materialTextures.append( currentTexture )
+                            
+                        # Adding found textures to this material
+                        currentMaterial.textures = materialTextures
+                    
+                    # Adding this material to the full list
+                    generatedMaterials.append(currentMaterial)
+            else:
+                raise RuntimeError("Can't export nodes without materials. Add at least one material to node '%s'." % currentObjNode.name)
+            
+            
         
         return generatedMaterials
         
             
             
     ### UTILITY METHODS
+    def getCompatiblePath(self,path):
+        """Return path minus the '//' prefix, for Windows compatibility"""
+        path = path.replace('\\', '/')
+        return path[2:] if path[:2] in {"//", b"//"} else path
+    
     def meshTriangulate(self, me):
         """
         Creates a triangulated copy of a mesh.

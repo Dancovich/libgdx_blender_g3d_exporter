@@ -42,6 +42,18 @@ class Vertex(object):
     @attributes.setter
     def attributes(self, newAttributes):
         self._attributes = newAttributes
+        
+    def normalizeBlendWeight(self):
+        if self.attributes != None:
+            blendWeightSum = 0.0
+            for attr in self.attributes:
+                if attr.name.startswith(VertexAttribute.BLENDWEIGHT,0,len(VertexAttribute.BLENDWEIGHT)):
+                    blendWeightSum = blendWeightSum + attr.value[1]
+            
+            for attr in self.attributes:
+                if attr.name.startswith(VertexAttribute.BLENDWEIGHT,0,len(VertexAttribute.BLENDWEIGHT)):
+                    attr.value[1] = attr.value[1] / blendWeightSum
+                    
     
     def compare(self, another):
         if another == None or not isinstance(another, Vertex):
@@ -50,7 +62,7 @@ class Vertex(object):
         numMyAttributes = len(self.attributes)
         numOtherAttributes = len(another.attributes)
         
-        sameAmountOfAttributes = numMyAttributes == numOtherAttributes
+        sameAmountOfAttributes = (numMyAttributes == numOtherAttributes)
         numEqualAttributeValues = 0
         
         # HACK Blender generates weird tangent and binormal vectors, usually different
@@ -59,9 +71,17 @@ class Vertex(object):
         normalIsEqual = False
         tangentIsEqual = False
         binormalIsEqual = False
+        hasTangent = False
+        hasBinormal = False
         
-        if (sameAmountOfAttributes):
+        if sameAmountOfAttributes:
             for attr in self._attributes:
+                if attr.name == VertexAttribute.TANGENT:
+                    hasTangent = True
+                
+                if attr.name == VertexAttribute.BINORMAL:
+                    hasBinormal = True
+                
                 for attr2 in another._attributes:
                     if attr.compare(attr2):
                         numEqualAttributeValues = numEqualAttributeValues + 1
@@ -77,16 +97,16 @@ class Vertex(object):
             if normalIsEqual:
                 bonusEqualAttributes = 0
                 
-                if not tangentIsEqual:
+                if not tangentIsEqual and hasTangent:
                     bonusEqualAttributes = bonusEqualAttributes + 1
-                if not binormalIsEqual:
+                if not binormalIsEqual and hasBinormal:
                     bonusEqualAttributes = bonusEqualAttributes + 1
                     
                 if numEqualAttributeValues + bonusEqualAttributes == numMyAttributes:
                     numEqualAttributeValues = numEqualAttributeValues + bonusEqualAttributes
                         
         
-        return sameAmountOfAttributes and numEqualAttributeValues == numMyAttributes
+        return sameAmountOfAttributes and (numEqualAttributeValues == numMyAttributes)
     
     def __repr__(self):
         reprStr = "{"

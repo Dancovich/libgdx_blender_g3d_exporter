@@ -1,29 +1,35 @@
+from io_scene_g3d.texture import Texture
 
 class Material(object):
     """Material associated with a geometry"""
     
     _id = ""
     
-    _ambient = []
+    _ambient = None
     
-    _diffuse = []
+    _diffuse = None
     
-    _emissive = []
+    _emissive = None
     
-    _opacity = 1.0
+    _opacity = None
     
-    _specular = []
+    _specular = None
     
-    _shininess = 0.0
+    _shininess = None
+    
+    _reflection = None
+    
+    _textures = []
     
     def __init__(self):
         self._id = ""
-        self._ambient = []
-        self._diffuse = []
-        self._emissive = []
-        self._opacity = 1.0
-        self._specular = []
-        self._shininess = 0.0
+        self._ambient = None
+        self._diffuse = None
+        self._emissive = None
+        self._opacity = None
+        self._specular = None
+        self._shininess = None
+        self._reflection = None
     
     @property
     def id(self):
@@ -38,33 +44,24 @@ class Material(object):
         return self._ambient
     
     @ambient.setter
-    def ambient(self, r, g, b, a):
-        self._ambient[0] = r
-        self._ambient[1] = g
-        self._ambient[2] = b
-        self._ambient[3] = a
+    def ambient(self, ambient):
+        self._ambient = ambient
         
     @property
     def diffuse(self):
         return self._diffuse
     
     @diffuse.setter
-    def diffuse(self, r, g, b, a):
-        self._diffuse[0] = r
-        self._diffuse[1] = g
-        self._diffuse[2] = b
-        self._diffuse[3] = a
+    def diffuse(self, diffuse):
+        self._diffuse = diffuse
         
     @property
     def emissive(self):
         return self._emissive
     
     @emissive.setter
-    def emissive(self, r, g, b, a):
-        self._emissive[0] = r
-        self._emissive[1] = g
-        self._emissive[2] = b
-        self._emissive[3] = a
+    def emissive(self, emissive):
+        self._emissive = emissive
         
     @property
     def opacity(self):
@@ -79,11 +76,8 @@ class Material(object):
         return self._specular
     
     @specular.setter
-    def specular(self, r, g, b, a):
-        self._specular[0] = r
-        self._specular[1] = g
-        self._specular[2] = b
-        self._specular[3] = a
+    def specular(self, specular):
+        self._specular = specular
         
     @property
     def shininess(self):
@@ -92,3 +86,19 @@ class Material(object):
     @shininess.setter
     def shininess(self, shininess):
         self._shininess = shininess
+        
+    @property
+    def reflection(self):
+        return self._reflection
+    
+    @reflection.setter
+    def reflection(self, reflection):
+        self._reflection = reflection
+        
+    @property
+    def textures(self):
+        return self._textures
+    
+    @textures.setter
+    def textures(self, textures):
+        self._textures = textures

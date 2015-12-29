@@ -1,6 +1,5 @@
 import math
 
-from io_scene_g3d.util import Util
 from io_scene_g3d.util import ROUND_STRING
 
 class VertexAttribute(object):

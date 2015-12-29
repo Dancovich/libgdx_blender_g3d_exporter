@@ -9,6 +9,8 @@ class G3DModel(object):
     
     _nodes = []
     
+    _animations = []
+    
     def __init__(self):
         self._meshes = []
         
@@ -57,3 +59,14 @@ class G3DModel(object):
             raise TypeError("'nodes' must be of type list")
         
         self._nodes = nodes
+        
+    @property
+    def animations(self):
+        return self._animations
+    
+    @animations.setter
+    def animations(self, animations):
+        if animations == None or not isinstance(animations, list):
+            raise TypeError("'animations' must be of type list")
+        
+        self._animations = animations

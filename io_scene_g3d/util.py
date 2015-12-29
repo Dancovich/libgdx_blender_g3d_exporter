@@ -6,8 +6,8 @@ _DEBUG_ = 3
 _WARN_ = 2
 _ERROR_ = 1
 
-#LOG_LEVEL = _WARN_
-LOG_LEVEL = _DEBUG_
+LOG_LEVEL = _WARN_
+#LOG_LEVEL = _DEBUG_
 
 class Util(object):
     def compareVector(self, v1, v2):

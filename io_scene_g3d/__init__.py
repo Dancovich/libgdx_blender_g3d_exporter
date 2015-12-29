@@ -30,6 +30,12 @@ bl_info = {
 import bpy
 from io_scene_g3d.g3d_exporter import G3DExporter
 
+try:
+    import pydevd
+    pydevd.settrace(stdoutToServer=True, stderrToServer=True, suspend=False)
+except ImportError:
+    pass
+
 class Mesh(object):
     def __init__(self, s):
         self.s = s

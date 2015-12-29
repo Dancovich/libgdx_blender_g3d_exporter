@@ -1,14 +1,18 @@
 import bpy
+
 from bpy_extras.io_utils import ExportHelper
 
-from io_scene_g3d.util import Util
+from io_scene_g3d.util import Util, LOG_LEVEL, _DEBUG_
 from io_scene_g3d.g3d_model import G3DModel
 from io_scene_g3d.mesh import Mesh
 from io_scene_g3d.mesh_part import MeshPart
 from io_scene_g3d.vertex import Vertex
 from io_scene_g3d.vertex_attribute import VertexAttribute
+from io_scene_g3d.node import Node, NodePart, Bone
 from io_scene_g3d.material import Material
 from io_scene_g3d.texture import Texture
+
+from io_scene_g3d.profile import profile, print_stats
 
 
 from bpy.props import BoolProperty, IntProperty
@@ -116,12 +120,18 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         # Generate the materials used in the model
         self.g3dModel.materials = self.generateMaterials(context)
         
+        # Generate the nodes binding mesh parts, materials and bones
+        self.g3dModel.nodes = self.generateNodes(context)
+        
         # Export the nodes
         # TODO Do the export
         
+        #if LOG_LEVEL == _DEBUG_:
+        print_stats()
+        
         return result
     
-    
+    @profile('generateMeshes')
     def generateMeshes(self, context):
         """Reads all MESH type objects and exported the selected ones (or all if 'only selected' isn't checked"""
         
@@ -147,13 +157,6 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
             # clone before exporting.
             currentBlMesh = currentObjNode.to_mesh(context.scene , False, 'PREVIEW', calc_tessface=False)
             self.meshTriangulate(currentBlMesh)
-            
-            #currentUVLayer = currentBlMesh.uv_layers[0].data
-            #currentBlMesh.calc_tangents(currentBlMesh.uv_layers[0].name)
-            
-            if currentBlMesh.materials != None:
-                for mat in currentBlMesh.materials:
-                    Util.debug(None, "Found this material in mesh: %r" % mat)
             
             # We can only export polygons that are associated with a material, so we loop
             # through the list of materials for this mesh  
@@ -189,7 +192,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         ############
                         # Vertex position is the minimal attribute
                         attribute = VertexAttribute(VertexAttribute.POSITION, \
-                                                    self.convertVector3Coordinate( blVertex.co ))
+                                                    self.convertVectorCoordinate( blVertex.co ))
                         if not currentVertex.add(attribute):
                             Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                         ############
@@ -213,14 +216,14 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                             if doneCalculatingTangentBinormal:
                                 tangent = [None] * 3
                                 tangent[0], tangent[1], tangent[2] = blLoop.tangent
-                                attribute = VertexAttribute(name=VertexAttribute.TANGENT,value=self.convertVector3Coordinate(tangent) )
+                                attribute = VertexAttribute(name=VertexAttribute.TANGENT,value=self.convertVectorCoordinate(tangent) )
                                 
                                 if not currentVertex.add(attribute):
                                     Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                                     
                                 binormal = [None] * 3
                                 binormal[0], binormal[1], binormal[2] = blLoop.bitangent
-                                attribute = VertexAttribute(name=VertexAttribute.BINORMAL,value=self.convertVector3Coordinate(binormal) )
+                                attribute = VertexAttribute(name=VertexAttribute.BINORMAL,value=self.convertVectorCoordinate(binormal) )
                                 
                                 if not currentVertex.add(attribute):
                                     Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
@@ -238,13 +241,13 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                         attribute = VertexAttribute(name=VertexAttribute.NORMAL)
                         if doneCalculatingTangentBinormal and splitNormalValue != None:
                             Util.debug(None, "    Using split normals: True")
-                            attribute.value = self.convertVector3Coordinate(splitNormalValue)
+                            attribute.value = self.convertVectorCoordinate(splitNormalValue)
                         elif poly.use_smooth:
                             Util.debug(None, "    Uses smooth shading: True")
-                            attribute.value = self.convertVector3Coordinate(blVertex.normal)
+                            attribute.value = self.convertVectorCoordinate(blVertex.normal)
                         else:
                             Util.debug(None, "    Uses smooth shading: False")
-                            attribute.value = self.convertVector3Coordinate(poly.normal)
+                            attribute.value = self.convertVectorCoordinate(poly.normal)
                             
                         if not currentVertex.add(attribute):
                             Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
@@ -357,6 +360,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         # Return list of all meshes
         return generatedMeshes
     
+    @profile('generateMaterials')
     def generateMaterials(self, context):
         """Read and returns all materials used by the exported objects"""
         generatedMaterials = []
@@ -375,46 +379,55 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                     
                     currentMaterial.id = blMaterial.name
                     
+                    Util.debug(None, "Exporting material %s" % blMaterial.name)
+                    
                     currentMaterial.ambient = [blMaterial.ambient, blMaterial.ambient, blMaterial.ambient, 1.0]
+                    Util.debug(None, "    Ambient: %r" % currentMaterial.ambient)
                     
                     currentMaterial.diffuse = [blMaterial.diffuse_color[0] \
                                                     ,blMaterial.diffuse_color[1] \
                                                     ,blMaterial.diffuse_color[2]]
+                    Util.debug(None, "    Diffuse: %r" % currentMaterial.diffuse)
                     
                     currentMaterial.specular = [blMaterial.specular_color[0] * blMaterial.specular_intensity \
                                                     ,blMaterial.specular_color[1] * blMaterial.specular_intensity \
                                                     ,blMaterial.specular_color[2] * blMaterial.specular_intensity \
                                                     ,blMaterial.specular_alpha]
+                    Util.debug(None, "    Specular: %r" % currentMaterial.specular)
                     
                     currentMaterial.emissive = [blMaterial.emit\
                                                     , blMaterial.emit\
                                                     , blMaterial.emit]
+                    Util.debug(None, "    Emissive: %r" % currentMaterial.emissive)
                     
                     currentMaterial.shininess = blMaterial.specular_hardness
+                    Util.debug(None, "    Shininess: %r" % currentMaterial.shininess)
                     
                     if blMaterial.raytrace_mirror.use:
                         currentMaterial.reflection = [blMaterial.raytrace_mirror.reflect_factor \
                                                       ,blMaterial.raytrace_mirror.reflect_factor \
                                                       ,blMaterial.raytrace_mirror.reflect_factor]
+                        Util.debug(None, "    Reflection: %r" % currentMaterial.reflection)
                     
                     if blMaterial.use_transparency:
                         currentMaterial.opacity = blMaterial.alpha
+                        Util.debug(None, "    Opacity: %r" % currentMaterial.opacity)
                         
                     if len(blMaterial.texture_slots)  > 0:
-                        Util.debug(None, "Exporting textures for material %s" % blMaterial.name)
+                        Util.debug(None, "    Exporting textures for material %s" % blMaterial.name)
                         materialTextures = []
     
                         for slot in blMaterial.texture_slots:
                             currentTexture = Texture()
         
                             if slot is not None:
-                                Util.debug(None,"Found texture %s. Texture coords are %s, texture type is %s" % (slot.name, slot.texture_coords , slot.texture.type) )
+                                Util.debug(None,"    Found texture %s. Texture coords are %s, texture type is %s" % (slot.name, slot.texture_coords , slot.texture.type) )
                             
                             if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
                                 if slot is not None:
-                                    Util.debug(None,"Texture type not supported, skipping" )
+                                    Util.debug(None,"    Texture type not supported, skipping" )
                                 else:
-                                    Util.debug(None,"Texture slot is empty, skipping" )
+                                    Util.debug(None,"    Texture slot is empty, skipping" )
                                 continue
 
                             currentTexture.id = slot.name
@@ -460,7 +473,175 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         
         return generatedMaterials
         
+    @profile('generateNodes')
+    def generateNodes(self, context, parent=None):
+        """Generates object nodes that attach mesh parts, materials and bones together"""
+        generatedNodes = []
+        
+        Util.debug(None, "Generating nodes")
+        
+        listOfBlenderObjects = None
+        
+        if parent == None:
+            listOfBlenderObjects = bpy.data.objects
+        elif parent.type == 'MESH':
+            listOfBlenderObjects = parent.children
+        elif parent.type == 'ARMATURE':
+            listOfBlenderObjects = parent.data.bones
+        else:
+            return None
+        
+        for blNode in listOfBlenderObjects:
             
+            # Node must be a bone, a mesh or an armature
+            if not isinstance(blNode, bpy.types.Bone):
+                if blNode.type == 'MESH':
+                    if (self.useSelection and not blNode.select):
+                        continue
+                elif blNode.type == 'ARMATURE':
+                    if not self.exportArmature:
+                        continue
+                else:
+                    continue
+            
+            Util.debug(None, "Exporting node %s" % blNode.name)
+            
+            currentNode = Node()
+            
+            if isinstance(blNode, bpy.types.Bone):
+                currentNode.id = ("%s__%s" % (parent.name , blNode.name))
+            else:
+                currentNode.id = blNode.name
+            
+            location = [0.0,0.0,0.0]
+            rotationQuaternion = [1.0,0.0,0.0,0.0]
+            scale = [1.0,1.0,1.0]
+            
+            try:
+                transformMatrix = None
+                
+                if isinstance(blNode, bpy.types.Bone):
+                    transformMatrix = self.getTransformFromBone(blNode)
+                elif blNode.parent != None:
+                    if (parent==None and blNode.parent.type == 'ARMATURE') \
+                            or (parent != None):
+                        # Exporting a child node, so we get the local transform matrix.
+                        # Obs: when exporting root mesh nodes parented to armatures, we consider it
+                        # 'child' in relation to the armature so we get it's local transform, but the mesh node
+                        # is still considered a root node.
+                        transformMatrix = blNode.matrix_local
+                    elif parent==None and blNode.parent.type == 'MESH':
+                        # If this node is parented and we didn't pass a 'parent' parameter then we are only
+                        # exporting root nodes at this time and we'll ignore this node.
+                        continue
+                else:
+                    # Exporting a root node, we get it's transform matrix from the world transform matrix
+                    transformMatrix = blNode.matrix_world
+                    
+                location, rotationQuaternion, scale = transformMatrix.decompose()
+                Util.debug(None,"Node transform is %s" % str(transformMatrix))
+                Util.debug(None,"Decomposed node transform is %s" % str(transformMatrix.decompose()))
+            except:
+                Util.warn(None,"Error decomposing transform for node %s" % blNode.name)
+                location = [0.0,0.0,0.0]
+                rotationQuaternion = [1.0,0.0,0.0,0.0]
+                scale = [1.0,1.0,1.0]
+                pass
+            
+            if not self.testDefaultQuaternion(rotationQuaternion):
+                currentNode.rotation = self.convertQuaternionCoordinate(rotationQuaternion)
+                
+            if not self.testDefaultTransform(location):
+                currentNode.translation = self.convertVectorCoordinate(location)
+                
+            if not self.testDefaultScale(scale):
+                currentNode.scale = self.convertScaleCoordinate(scale)
+            
+            # If this is a mesh node, go through each part and material and associate with this node
+            if not isinstance(blNode, bpy.types.Bone) and blNode.type == 'MESH':
+                currentBlMesh = blNode.data
+                
+                if currentBlMesh.materials == None:
+                    Util.warn(None, "Ignored mesh %r, no materials found" % currentBlMesh)
+                    continue
+                
+                for blMaterialIndex in range(0,len(currentBlMesh.materials)):
+                    nodePart = NodePart()
+                    
+                    currentBlMeshName = currentBlMesh.name
+                    nodePart.meshPartId = currentBlMeshName+"_part"+str(blMaterialIndex)
+                    
+                    nodePart.materialId = currentBlMesh.materials[blMaterialIndex].name
+                    
+                    # Maps material textures to the TEXCOORD attributes
+                    for uvIndex in range(len(currentBlMesh.uv_layers)):
+                        blUvLayer = currentBlMesh.uv_layers[uvIndex]
+                        currentTexCoord = []
+                        
+                        for texIndex in range(len(currentBlMesh.materials.texture_slots)):
+                            blTexSlot = currentBlMesh.materials.texture_slots[texIndex]
+                            
+                            if (blTexSlot is None \
+                                    or blTexSlot.texture_coords != 'UV' \
+                                    or blTexSlot.texture.type != 'IMAGE' \
+                                    or blTexSlot.texture.__class__ is not bpy.types.ImageTexture):
+                                continue
+                            
+                            if (blTexSlot.uv_layer == blUvLayer.name or (blTexSlot.uv_layer == "" and uvIndex == 0)):
+                                currentTexCoord.append( texIndex )
+                        
+                        # Adding UV mappings to this node part
+                        nodePart.addUVLayer(currentTexCoord)
+                        
+                    # Start writing bones
+                    if self.exportArmature and len(blNode.vertex_groups) > 0:
+                        Util.debug(None, "Writing bones for node %s" % blNode.name)
+                        
+                        for blVertexGroup in blNode.vertex_groups:
+                            #Try to find an armature with a bone associated with this vertex group
+                            if blNode.parent != None and blNode.parent.type == 'ARMATURE':
+                                blArmature = blNode.parent.data
+                                try:
+                                    bone = blArmature.bones[blVertexGroup.name]
+                                    
+                                    #Referencing the bone node
+                                    currentBone = Bone()
+                                    currentBone.node = ("%s__%s" % (blNode.parent.name , blVertexGroup.name))
+                                    
+                                    boneTransformMatrix = blNode.matrix_local.inverted() * bone.matrix_local
+                                    boneLocation, boneQuaternion, boneScale = boneTransformMatrix.decompose()
+                                    
+                                    Util.debug(None, "Appending pose bone %s with transform %s" % (blVertexGroup.name , str(boneTransformMatrix)))
+                                    
+                                    if not self.testDefaultTransform(boneLocation):
+                                        currentBone.translation = self.convertVectorCoordinate(boneLocation)
+                                    
+                                    if not self.testDefaultQuaternion(boneQuaternion):
+                                        currentBone.rotation = self.convertQuaternionCoordinate(boneQuaternion)
+                                    
+                                    if not self.testDefaultScale(boneScale):
+                                        currentBone.scale = self.convertScaleCoordinate(boneScale)
+                                    
+                                    # Appending resulting bone to part
+                                    nodePart.addBone(currentBone)
+    
+                                except KeyError:
+                                    Util.warn(None, "Vertex group %s has no corresponding bone" % (blVertexGroup.name))
+                                except:
+                                    Util.debug(None, "Unexpected error exporting bone: %s" % blVertexGroup.name)
+                
+                    # Adding this node part to the current node
+                    currentNode.addPart(nodePart)
+            
+            # If this node is a parent, export it's children
+            if blNode.children != None and len(blNode.children) > 0:
+                childNodes = self.generateNodes(context, blNode)
+                currentNode.children = childNodes
+            
+            # Adding the current generated node to the list of nodes
+            generatedNodes.append(currentNode)
+            
+        return generatedNodes
             
     ### UTILITY METHODS
     def getCompatiblePath(self,path):
@@ -483,7 +664,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         bm.free()
         del bmesh
         
-    def convertVector3Coordinate(self, co):
+    def convertVectorCoordinate(self, co):
         """
         Converts Blender axis (Z-up) to the destination axis (usually Z-forward Y-up)
         
@@ -499,3 +680,66 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                       , Util.floatToString(None, newCo[0]), Util.floatToString(None, newCo[1]), Util.floatToString(None, newCo[2])))
         
         return newCo
+    
+    def convertQuaternionCoordinate(self, co):
+        """
+        Converts quaternions from Blender axis (Z-up) to the destination axis (usually Z-forward Y-up)
+        
+        Destination axis is defined on 'self.vector3AxisMapper' and 'self.vector4AxisMapper' attributes. 
+        """
+        
+        newCo = [ (co[ self.vector4AxisMapper["x"]["coPos"] ] * self.vector4AxisMapper["x"]["sign"]) \
+                 , (co[ self.vector4AxisMapper["y"]["coPos"] ] * self.vector4AxisMapper["y"]["sign"]) \
+                 , (co[ self.vector4AxisMapper["z"]["coPos"] ] * self.vector4AxisMapper["z"]["sign"]) \
+                 , (co[ self.vector4AxisMapper["w"]["coPos"] ] * self.vector4AxisMapper["w"]["sign"]) ]
+        
+        Util.debug(None, "|=[Converting quaternion from format [w, x, y, z] [%s, %s, %s, %s] to format [x, y, z, w] [%s, %s, %s, %s]]=|" \
+                   % (Util.floatToString(None, co[0]),Util.floatToString(None, co[1]),Util.floatToString(None, co[2]),Util.floatToString(None, co[3]) \
+                      , Util.floatToString(None, newCo[0]), Util.floatToString(None, newCo[1]), Util.floatToString(None, newCo[2]), Util.floatToString(None, newCo[3])))
+        
+        return newCo
+    
+    def convertScaleCoordinate(self, co):
+        """
+        Converts Blender axis (Z-up) to the destination axis (usually Z-forward Y-up)
+        
+        For scaling the range is 0.0 to 1.0 so we ignore sign and just adjust axis 
+        """
+        
+        newCo = [ co[ self.vector3AxisMapper["x"]["coPos"] ] \
+                 , co[ self.vector3AxisMapper["y"]["coPos"] ] \
+                 , co[ self.vector3AxisMapper["z"]["coPos"] ] ]
+        
+        Util.debug(None, "|=[Converting scaling coordinates from [%s, %s, %s] to [%s, %s, %s]]=|" \
+                   % (Util.floatToString(None, co[0]),Util.floatToString(None, co[1]),Util.floatToString(None, co[2]) \
+                      , Util.floatToString(None, newCo[0]), Util.floatToString(None, newCo[1]), Util.floatToString(None, newCo[2])))
+        
+        return newCo
+    
+    def getTransformFromBone(self, bone):
+        """Create a transform matrix based on the relative rest position of a bone"""
+        transformMatrix = None
+            
+        if bone.parent == None:
+            transformMatrix = bone.matrix_local
+        else:
+            transformMatrix = bone.parent.matrix_local.inverted() * bone.matrix_local
+        
+        return transformMatrix
+
+    def testDefaultQuaternion(self, quaternion):
+        return quaternion[0] == 1.0 \
+                and quaternion[1] == 0.0 \
+                and quaternion[2] == 0.0 \
+                and quaternion[3] == 0.0
+    
+    def testDefaultScale(self, scale):
+        return scale[0] == 1.0 \
+                and scale[1] == 1.0 \
+                and scale[2] == 1.0
+    
+    def testDefaultTransform(self, transform):
+        return transform[0] == 0.0 \
+                and transform[1] == 0.0 \
+                and transform[2] == 0.0
+                

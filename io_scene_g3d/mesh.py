@@ -62,7 +62,5 @@ class Mesh(object):
         meshPart.parentMesh = self
         
     def __repr__(self):
-        print(self._parts)
         value = "VERTICES:\n%r\n\nPARTS:\n%r\n\n" % (self._vertices, self._parts)
-        
         return value

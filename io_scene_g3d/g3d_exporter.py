@@ -1,20 +1,25 @@
 import bpy
 import mathutils
 
-from bpy_extras.io_utils import ExportHelper, orientation_helper_factory, axis_conversion
+from bpy_extras.io_utils import ExportHelper, orientation_helper_factory
 
 from io_scene_g3d.util import Util
-from io_scene_g3d.g3d_model import G3DModel
-from io_scene_g3d.mesh import Mesh
-from io_scene_g3d.mesh_part import MeshPart
-from io_scene_g3d.vertex import Vertex
-from io_scene_g3d.vertex_attribute import VertexAttribute
-from io_scene_g3d.node import Node, NodePart, Bone
-from io_scene_g3d.material import Material
-from io_scene_g3d.texture import Texture
-from io_scene_g3d.animation import Animation, NodeAnimation, Keyframe
+from io_scene_g3d.domain_classes import G3DModel \
+    , Mesh \
+    , MeshPart \
+    , Vertex \
+    , VertexAttribute \
+    , Node \
+    , NodePart \
+    , Bone \
+    , Material \
+    , Texture \
+    , Animation \
+    , NodeAnimation \
+    , Keyframe \
 
 from io_scene_g3d.profile import profile, print_stats
+from io_scene_g3d.g3dj_exporter import G3DJExporter
 
 
 from bpy.props import BoolProperty, IntProperty, EnumProperty
@@ -109,8 +114,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
         # Convert action curves to animations
         self.g3dModel.animations = self.generateAnimations(context)
         
-        # Export the nodes
-        # TODO Do the export
+        # Export to the final file
+        exporter = G3DJExporter()
+        exporter.export(self.g3dModel)
         
         #if LOG_LEVEL == _DEBUG_:
         print_stats()
@@ -564,8 +570,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
                         blUvLayer = currentBlMesh.uv_layers[uvIndex]
                         currentTexCoord = []
                         
-                        for texIndex in range(len(currentBlMesh.materials.texture_slots)):
-                            blTexSlot = currentBlMesh.materials.texture_slots[texIndex]
+                        for texIndex in range(len(currentBlMesh.materials[blMaterialIndex].texture_slots)):
+                            blTexSlot = currentBlMesh.materials[blMaterialIndex].texture_slots[texIndex]
                             
                             if (blTexSlot is None \
                                     or blTexSlot.texture_coords != 'UV' \

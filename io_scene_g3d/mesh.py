@@ -9,6 +9,10 @@ class Mesh(object):
     
     _parts = []
     
+    # This is a cache so we know all attributes this mesh has.
+    # All the real attributes are in the vertices
+    _attributes = []
+    
     def __init__(self):
         self._id = ""
         self._vertices = []
@@ -25,6 +29,9 @@ class Mesh(object):
     @property
     def vertices(self):
         return self._vertices
+    
+    def getAttributes(self):
+        return self._attributes
     
     def addVertex(self,vertex):
         """
@@ -50,6 +57,12 @@ class Mesh(object):
             
         if not alreadyAdded:
             self._vertices.append(vertex)
+            
+            # Add this vertice's attributes to the attribute name cache
+            for attr in vertex.attributes:
+                if not attr.name in self._attributes:
+                    self._attributes.append(attr.name)
+            
             return vertex
         else:
             return foundVertex

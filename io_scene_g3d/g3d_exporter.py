@@ -1,7 +1,7 @@
 import bpy
 import mathutils
 
-from bpy_extras.io_utils import ExportHelper
+from bpy_extras.io_utils import ExportHelper, orientation_helper_factory, axis_conversion
 
 from io_scene_g3d.util import Util
 from io_scene_g3d.g3d_model import G3DModel
@@ -17,27 +17,35 @@ from io_scene_g3d.animation import Animation, NodeAnimation, Keyframe
 from io_scene_g3d.profile import profile, print_stats
 
 
-from bpy.props import BoolProperty, IntProperty
+from bpy.props import BoolProperty, IntProperty, EnumProperty
 
-class G3DExporter(bpy.types.Operator, ExportHelper):
+IOG3DOrientationHelper = orientation_helper_factory("IOG3DOrientationHelper", axis_forward='-Z', axis_up='Y')
+
+class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
     """Export scene to G3D (LibGDX) format"""
     
-    bl_idname     = "export_json_g3d.g3dj"
+    bl_idname     = "export_json_g3d.g3d"
     bl_label      = "G3D Exporter"
     bl_options    = {'PRESET'}
     
-    filename_ext    = ".g3dj"
+    filename_ext    = ".g3d"
     
     # This is our model
     g3dModel = None
     
     # Exporter options
+    fileFormat = EnumProperty(
+            name="File Format",
+            items=(('G3DJ', "Text Format (G3DJ)", "3D Model exported as text in the JSON format"),
+                   ('G3DB', "Binary Format (G3DB)", "3D Model exported as a binary file")),
+            default='G3DJ',
+            )
+    
     useSelection = BoolProperty( \
             name="Selection Only", \
             description="Export only selected objects", \
             default=False, \
             )
-    
     
     exportArmature = BoolProperty( \
             name="Export Armature", \
@@ -48,7 +56,8 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
     bonesPerVertex = IntProperty( \
             name="Bone Weights per Vertex", \
             description="Maximum number of BLENDWEIGHT attributes per vertex. LibGDX default is 4.", \
-            default=4 \
+            default=4, \
+            soft_min=1, soft_max=8 \
             )
     
     exportAnimation = BoolProperty( \
@@ -77,40 +86,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
         """Main method run by Blender to export a G3D file"""
         
         # Defines our mapping from Blender Z-Up to whatever the user selected
-        self.vector3AxisMapper["x"] = {}
-        self.vector3AxisMapper["x"]["axis"] = "x"
-        self.vector3AxisMapper["x"]["coPos"] = 0
-        self.vector3AxisMapper["x"]["sign"] = 1.0
-        
-        self.vector3AxisMapper["y"] = {}
-        self.vector3AxisMapper["y"]["axis"] = "z"
-        self.vector3AxisMapper["y"]["coPos"] = 2
-        self.vector3AxisMapper["y"]["sign"] = 1.0
-        
-        self.vector3AxisMapper["z"] = {}
-        self.vector3AxisMapper["z"]["axis"] = "y"
-        self.vector3AxisMapper["z"]["coPos"] = 1
-        self.vector3AxisMapper["z"]["sign"] = -1.0
-        
-        self.vector4AxisMapper["x"] = {}
-        self.vector4AxisMapper["x"]["axis"] = "x"
-        self.vector4AxisMapper["x"]["coPos"] = 1
-        self.vector4AxisMapper["x"]["sign"] = 1.0
-        
-        self.vector4AxisMapper["y"] = {}
-        self.vector4AxisMapper["y"]["axis"] = "z"
-        self.vector4AxisMapper["y"]["coPos"] = 3
-        self.vector4AxisMapper["y"]["sign"] = 1.0
-        
-        self.vector4AxisMapper["z"] = {}
-        self.vector4AxisMapper["z"]["axis"] = "y"
-        self.vector4AxisMapper["z"]["coPos"] = 2
-        self.vector4AxisMapper["z"]["sign"] = -1.0
-        
-        self.vector4AxisMapper["w"] = {}
-        self.vector4AxisMapper["w"]["axis"] = "w"
-        self.vector4AxisMapper["w"]["coPos"] = 0
-        self.vector4AxisMapper["w"]["sign"] = 1.0
+        self.setupAxisConversion(self.axis_forward, self.axis_up)
         
         # Changes Blender to "object" mode
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -963,3 +939,156 @@ class G3DExporter(bpy.types.Operator, ExportHelper):
                 and transform[1] == 0.0 \
                 and transform[2] == 0.0
                 
+    def setupAxisConversion(self, axisForward, axisUp):
+        Util.debug(None, "Converting axis using forward as '%s' and up as '%s'" % (axisForward, axisUp))
+        
+        self.vector3AxisMapper["x"] = {}
+        self.vector3AxisMapper["y"] = {}
+        self.vector3AxisMapper["z"] = {}
+        self.vector4AxisMapper["x"] = {}
+        self.vector4AxisMapper["y"] = {}
+        self.vector4AxisMapper["z"] = {}
+        self.vector4AxisMapper["w"] = {}
+        
+        # W for quaternions takes from blender W which is index 0
+        self.vector4AxisMapper["w"]["coPos"] = 0
+        self.vector4AxisMapper["w"]["sign"] = 1.0
+        
+        if axisForward == "X" or axisForward == "-X":
+            self.vector3AxisMapper["x"]["coPos"] = 1
+            self.vector4AxisMapper["x"]["coPos"] = 2
+            
+            if axisForward == "X":
+                self.vector3AxisMapper["x"]["sign"] = 1.0
+                self.vector4AxisMapper["x"]["sign"] = 1.0
+            else:
+                self.vector3AxisMapper["x"]["sign"] = -1.0
+                self.vector4AxisMapper["x"]["sign"] = -1.0
+                
+            if axisUp == "Y" or axisUp == "-Y":
+                self.vector3AxisMapper["y"]["coPos"] = 2
+                self.vector4AxisMapper["y"]["coPos"] = 3
+                
+                if axisUp == "Y":
+                    self.vector3AxisMapper["y"]["sign"] = 1.0
+                    self.vector4AxisMapper["y"]["sign"] = 1.0
+                else:
+                    self.vector3AxisMapper["y"]["sign"] = -1.0
+                    self.vector4AxisMapper["y"]["sign"] = -1.0
+                    
+                # Z is right
+                self.vector3AxisMapper["z"]["coPos"] = 0
+                self.vector4AxisMapper["z"]["coPos"] = 1
+                self.vector3AxisMapper["z"]["sign"] = 1.0
+                self.vector4AxisMapper["z"]["sign"] = 1.0
+                
+            elif axisUp == "Z" or axisUp == "-Z":
+                self.vector3AxisMapper["z"]["coPos"] = 2
+                self.vector4AxisMapper["z"]["coPos"] = 3
+                
+                if axisUp == "Z":
+                    self.vector3AxisMapper["z"]["sign"] = 1.0
+                    self.vector4AxisMapper["z"]["sign"] = 1.0
+                else:
+                    self.vector3AxisMapper["z"]["sign"] = -1.0
+                    self.vector4AxisMapper["z"]["sign"] = -1.0
+                    
+                # Y is right
+                self.vector3AxisMapper["y"]["coPos"] = 0
+                self.vector4AxisMapper["y"]["coPos"] = 1
+                self.vector3AxisMapper["y"]["sign"] = 1.0
+                self.vector4AxisMapper["y"]["sign"] = 1.0
+                    
+            
+        elif axisForward == "Y" or axisForward == "-Y":
+            self.vector3AxisMapper["y"]["coPos"] = 1
+            self.vector4AxisMapper["y"]["coPos"] = 2
+            
+            if axisForward == "Y":
+                self.vector3AxisMapper["y"]["sign"] = 1.0
+                self.vector4AxisMapper["y"]["sign"] = 1.0
+            else:
+                self.vector3AxisMapper["y"]["sign"] = -1.0
+                self.vector4AxisMapper["y"]["sign"] = -1.0
+                
+            if axisUp == "X" or axisUp == "-X":
+                self.vector3AxisMapper["x"]["coPos"] = 2
+                self.vector4AxisMapper["x"]["coPos"] = 3
+                
+                if axisUp == "X":
+                    self.vector3AxisMapper["x"]["sign"] = 1.0
+                    self.vector4AxisMapper["x"]["sign"] = 1.0
+                else:
+                    self.vector3AxisMapper["x"]["sign"] = -1.0
+                    self.vector4AxisMapper["x"]["sign"] = -1.0
+                    
+                # Z is right
+                self.vector3AxisMapper["z"]["coPos"] = 0
+                self.vector4AxisMapper["z"]["coPos"] = 1
+                self.vector3AxisMapper["z"]["sign"] = 1.0
+                self.vector4AxisMapper["z"]["sign"] = 1.0
+                
+            elif axisUp == "Z" or axisUp == "-Z":
+                self.vector3AxisMapper["z"]["coPos"] = 2
+                self.vector4AxisMapper["z"]["coPos"] = 3
+                
+                if axisUp == "Z":
+                    self.vector3AxisMapper["z"]["sign"] = 1.0
+                    self.vector4AxisMapper["z"]["sign"] = 1.0
+                else:
+                    self.vector3AxisMapper["z"]["sign"] = -1.0
+                    self.vector4AxisMapper["z"]["sign"] = -1.0
+                    
+                # X is right
+                self.vector3AxisMapper["x"]["coPos"] = 0
+                self.vector4AxisMapper["x"]["coPos"] = 1
+                self.vector3AxisMapper["x"]["sign"] = 1.0
+                self.vector4AxisMapper["x"]["sign"] = 1.0
+                        
+        elif axisForward == "Z" or axisForward == "-Z":
+            self.vector3AxisMapper["z"]["coPos"] = 1
+            self.vector4AxisMapper["z"]["coPos"] = 2
+            
+            if axisForward == "Z":
+                self.vector3AxisMapper["z"]["sign"] = 1.0
+                self.vector4AxisMapper["z"]["sign"] = 1.0
+            else:
+                self.vector3AxisMapper["z"]["sign"] = -1.0
+                self.vector4AxisMapper["z"]["sign"] = -1.0
+                
+            if axisUp == "Y" or axisUp == "-Y":
+                self.vector3AxisMapper["y"]["coPos"] = 2
+                self.vector4AxisMapper["y"]["coPos"] = 3
+                
+                if axisUp == "Y":
+                    self.vector3AxisMapper["y"]["sign"] = 1.0
+                    self.vector4AxisMapper["y"]["sign"] = 1.0
+                else:
+                    self.vector3AxisMapper["y"]["sign"] = -1.0
+                    self.vector4AxisMapper["y"]["sign"] = -1.0
+                    
+                # X is right
+                self.vector3AxisMapper["x"]["coPos"] = 0
+                self.vector4AxisMapper["x"]["coPos"] = 1
+                self.vector3AxisMapper["x"]["sign"] = 1.0
+                self.vector4AxisMapper["x"]["sign"] = 1.0
+                
+            elif axisUp == "X" or axisUp == "-X":
+                self.vector3AxisMapper["x"]["coPos"] = 2
+                self.vector4AxisMapper["x"]["coPos"] = 3
+                
+                if axisUp == "X":
+                    self.vector3AxisMapper["x"]["sign"] = 1.0
+                    self.vector4AxisMapper["x"]["sign"] = 1.0
+                else:
+                    self.vector3AxisMapper["x"]["sign"] = -1.0
+                    self.vector4AxisMapper["x"]["sign"] = -1.0
+                    
+                # Y is right
+                self.vector3AxisMapper["y"]["coPos"] = 0
+                self.vector4AxisMapper["y"]["coPos"] = 1
+                self.vector3AxisMapper["y"]["sign"] = 1.0
+                self.vector4AxisMapper["y"]["sign"] = 1.0
+        
+        Util.debug(None, "Axis conversion configuration for vectors is {%r}" % self.vector3AxisMapper)
+        Util.debug(None, "Axis conversion configuration for quaternions is {%r}" % self.vector4AxisMapper)

@@ -66,7 +66,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
             )
     
     exportAnimation = BoolProperty( \
-            name="Export Actions as Animation", \
+            name="Export Actions as Animations", \
             description="Export bone actions as animations", \
             default=False, \
             )
@@ -117,6 +117,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
         # Export to the final file
         exporter = G3DJExporter()
         exporter.export(self.g3dModel)
+        
+        # Clean up after export
+        self.g3dModel = None
         
         #if LOG_LEVEL == _DEBUG_:
         print_stats()
@@ -288,11 +291,14 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
                             
                             if currentObjNode.parent != None and currentObjNode.parent.type == 'ARMATURE':
                                 armatureObj = currentObjNode.parent
-                                boneIndex = 0
+                                boneIndex = -1
+                                blendWeightIndex = 0
 
-                                for vertexGroup in currentObjNode.vertex_groups:
+                                for vertexGroupIndex in range(0, len(currentObjNode.vertex_groups)):
+                                    vertexGroup = currentObjNode.vertex_groups[vertexGroupIndex]
+                                    
                                     # We can only export this ammount of bones per vertex
-                                    if boneIndex >= self.bonesPerVertex:
+                                    if blendWeightIndex >= self.bonesPerVertex:
                                         break
                                     
                                     # Search for a bone with the same name as a vertex group
@@ -302,9 +308,11 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
                                         bone = armatureObj.data.bones[vertexGroup.name]
                                     except:
                                         bone = None
+                                        pass
                                     
                                     if bone != None:
                                         Util.debug(None, "        Found bone %s" % vertexGroup.name)
+                                        boneIndex = boneIndex + 1
                                         
                                         try:
                                             # We get the weight associated with this vertex group. Zeros are ignored
@@ -314,12 +322,12 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
 
                                             if Util.floatToString(None, boneWeight) != zeroWeight:
                                                 blendWeightValue = [float(boneIndex), boneWeight]
-                                                attribute = VertexAttribute((blendWeightAttrName % boneIndex), blendWeightValue)
+                                                attribute = VertexAttribute((blendWeightAttrName % blendWeightIndex), blendWeightValue)
                                                 
                                                 if not currentVertex.add(attribute):
                                                     Util.warn(None,"    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex),attribute))
                                                 else:
-                                                    boneIndex = boneIndex + 1
+                                                    blendWeightIndex = blendWeightIndex + 1
 
                                         except Exception as boneWeightException:
                                             Util.warn(None, "        Error trying to export bone weight for vertex index %d (%r)" % (blLoop.vertex_index,boneWeightException))
@@ -344,6 +352,9 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
                     
             # Clean cloned mesh
             bpy.data.meshes.remove(currentBlMesh)
+            
+            # Normalize attributes so mesh has same number of them for all vertices
+            generatedMesh.normalizeAttributes()
             
             # Add generated mesh to returned list
             Util.debug(None, "==== GENERATED MESH IS \n %s" % generatedMesh)
@@ -466,7 +477,7 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
         return generatedMaterials
         
     @profile('generateNodes')
-    def generateNodes(self, context, parent=None):
+    def generateNodes(self, context, parent=None, parentName=""):
         """Generates object nodes that attach mesh parts, materials and bones together"""
         generatedNodes = []
         
@@ -476,10 +487,16 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
         
         if parent == None:
             listOfBlenderObjects = bpy.data.objects
+        elif isinstance(parent, bpy.types.Bone):
+            listOfBlenderObjects = parent.children
         elif parent.type == 'MESH':
             listOfBlenderObjects = parent.children
         elif parent.type == 'ARMATURE':
             listOfBlenderObjects = parent.data.bones
+            
+            # If parent is an armature, we store it's name to concatenate with bone names later
+            parentName = parent.name
+            
         else:
             return None
         
@@ -495,13 +512,21 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
                         continue
                 else:
                     continue
+            else:
+                # If node is a bone see if parent is the armature.
+                # If is, only export the bone if it's a root bone (doesn't have
+                # another bone as a parent). Otherwise wait to export it 
+                # when the parent bone is being exported
+                if parent != None and not isinstance(parent, bpy.types.Bone) and parent.type == 'ARMATURE':
+                    if blNode.parent != None:
+                        continue
             
             Util.debug(None, "Exporting node %s" % blNode.name)
             
             currentNode = Node()
             
             if isinstance(blNode, bpy.types.Bone):
-                currentNode.id = ("%s__%s" % (parent.name , blNode.name))
+                currentNode.id = ("%s__%s" % (parentName , blNode.name))
             else:
                 currentNode.id = blNode.name
             
@@ -619,15 +644,17 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
     
                                 except KeyError:
                                     Util.warn(None, "Vertex group %s has no corresponding bone" % (blVertexGroup.name))
+                                    pass
                                 except:
-                                    Util.debug(None, "Unexpected error exporting bone: %s" % blVertexGroup.name)
+                                    Util.error(None, "Unexpected error exporting bone: %s" % blVertexGroup.name)
+                                    pass
                 
                     # Adding this node part to the current node
                     currentNode.addPart(nodePart)
             
             # If this node is a parent, export it's children
             if blNode.children != None and len(blNode.children) > 0:
-                childNodes = self.generateNodes(context, blNode)
+                childNodes = self.generateNodes(context, blNode, parentName)
                 currentNode.children = childNodes
             
             # Adding the current generated node to the list of nodes
@@ -642,141 +669,122 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
         """If selected by the user, generates keyframed animations for the bones"""
         generatedAnimations = []
         
-        # Save our time per frame (in miliseconds)
+        # Save our time per currentFrameNumber (in miliseconds)
         fps = context.scene.render.fps
         frameTime = (1 / fps) * 1000
         
-        # For each action we export keyframe data.
+        # For each action we export currentFrameNumber data.
         # We are exporting all actions, but to avoid exporting deleted actions (actions with ZERO users)
         # each action must have at least one user. In Blender user the FAKE USER option to assign at least
         # one user to each action
-        for blAction in bpy.data.actions:
-            if blAction.users <= 0:
-                continue
-            
-            Util.debug(None,"Writing animation for action %s" % blAction.name)
-            
-            currentAnimation = Animation()
-            
-            for blArmature in bpy.data.objects:
-                if blArmature.type != 'ARMATURE':
-                    continue
-            
-                # If armature have a selected object as a child we export it' actions regardless of it being
-                # selected and "export selected only" is checked. Otherwise it is only exported
-                # if it's selected
-                doExportArmature = False
-                if self.useSelection and not blArmature.select:
-                    for child in blArmature.children:
-                        if child.select:
-                            doExportArmature = True
-                            break
-                else:
-                    doExportArmature = True
-    
-                if not doExportArmature:
+        if self.exportAnimation:
+            for blAction in bpy.data.actions:
+                if blAction.users <= 0:
                     continue
                 
-                for blBone in blArmature.data.bones:
-                    currentBone = NodeAnimation()
-                    currentBone.boneId = ("%s__%s" % (blArmature.name , blBone.name))
+                Util.debug(None,"Writing animation for action %s" % blAction.name)
+                
+                currentAnimation = Animation()
+                
+                for blArmature in bpy.data.objects:
+                    if blArmature.type != 'ARMATURE':
+                        continue
+                
+                    # If armature have a selected object as a child we export it' actions regardless of it being
+                    # selected and "export selected only" is checked. Otherwise it is only exported
+                    # if it's selected
+                    doExportArmature = False
+                    if self.useSelection and not blArmature.select:
+                        for child in blArmature.children:
+                            if child.select:
+                                doExportArmature = True
+                                break
+                    else:
+                        doExportArmature = True
+        
+                    if not doExportArmature:
+                        continue
                     
-                    translationFCurve = self.findFCurve(blAction, blBone, self.P_LOCATION)
-                    rotationFCurve = self.findFCurve(blAction, blBone, self.P_ROTATION)
-                    scaleFCurve = self.findFCurve(blAction, blBone, self.P_SCALE)
-                    
-                    # Rest transform of this bone, used as reference to calculate frames
-                    restTransform = self.getTransformFromBone(blBone)
-                    
-                    frameStart = context.scene.frame_start
-                    for keyframe in range(int(blAction.frame_range[0]) , int(blAction.frame_range[1]+1)):
-                        currentKeyframe = Keyframe()
+                    for blBone in blArmature.data.bones:
+                        currentBone = NodeAnimation()
+                        currentBone.boneId = ("%s__%s" % (blArmature.name , blBone.name))
                         
-                        translationVector = [0.0] * 3
-                        rotationVector = [0.0] * 4
-                        rotationVector[0] = 1.0
-                        scaleVector = [1.0] * 3
+                        translationFCurve = self.findFCurve(blAction, blBone, self.P_LOCATION)
+                        rotationFCurve = self.findFCurve(blAction, blBone, self.P_ROTATION)
+                        scaleFCurve = self.findFCurve(blAction, blBone, self.P_SCALE)
                         
-                        if translationFCurve != None and translationFCurve != ( [None] * 3 ):
-                            if translationFCurve[0] != None:
-                                translationVector[0] = translationFCurve[0].evaluate(keyframe)
-                            if translationFCurve[1] != None:
-                                translationVector[1] = translationFCurve[1].evaluate(keyframe)
-                            if translationFCurve[2] != None:
-                                translationVector[2] = translationFCurve[2].evaluate(keyframe)
-                                
-                        if rotationFCurve != None and rotationFCurve != ( [None] * 4 ):
-                            if rotationFCurve[0] != None:
-                                rotationVector[0] = rotationFCurve[0].evaluate(keyframe)
-                            if rotationFCurve[1] != None:
-                                rotationVector[1] = rotationFCurve[1].evaluate(keyframe)
-                            if rotationFCurve[2] != None:
-                                rotationVector[2] = rotationFCurve[2].evaluate(keyframe)
-                            if rotationFCurve[3] != None:
-                                rotationVector[3] = rotationFCurve[3].evaluate(keyframe)
+                        # Rest transform of this bone, used as reference to calculate frames
+                        restTransform = self.getTransformFromBone(blBone)
                         
-                        if scaleFCurve != None and scaleFCurve != ( [None] * 3 ):
-                            if scaleFCurve[0] != None:
-                                scaleVector[0] = scaleFCurve[0].evaluate(keyframe)
-                            if scaleFCurve[1] != None:
-                                scaleVector[1] = scaleFCurve[1].evaluate(keyframe)
-                            if scaleFCurve[2] != None:
-                                scaleVector[2] = scaleFCurve[2].evaluate(keyframe)
-                                
-                        poseTransform = self.createTransformMatrix(translationVector, rotationVector, scaleVector)
-                        translationVector, rotationVector, scaleVector = (restTransform * poseTransform).decompose()
-                        
-                        # Compare current frame to previous one (or to rest position) to optimize keyframes
-                        pre_loc = [0.0] * 3
-                        pre_rot = [0.0] * 4
-                        pre_rot[0] = 1.0
-                        pre_sca = [1.0] * 3
-                        
-                        if currentBone.keyframes != None and len(currentBone.keyframes) > 0:
-                            previousFrame = currentBone.keyframes[ len(currentBone.keyframes)-1 ]
-                            if previousFrame.translation != None:
-                                pre_loc = mathutils.Vector(previousFrame.translation)
-                            if previousFrame.rotation != None:
-                                pre_rot = mathutils.Quaternion( previousFrame.rotation )
-                            if previousFrame.scale != None:
-                                pre_sca = mathutils.Vector(previousFrame.scale)
-                                
-                        if not self.compareVector(translationVector, pre_loc):
+                        frameStart = context.scene.frame_start
+                        for currentFrameNumber in range(int(blAction.frame_range[0]) , int(blAction.frame_range[1]+1)):
+                            currentKeyframe = Keyframe()
+                            
+                            translationVector = [0.0] * 3
+                            rotationVector = [0.0] * 4
+                            rotationVector[0] = 1.0
+                            scaleVector = [1.0] * 3
+                            
+                            if translationFCurve != None and translationFCurve != ( [None] * 3 ) and self.mustEvaluateKeyframe(translationFCurve, float(currentFrameNumber)):
+                                if translationFCurve[0] != None:
+                                    translationVector[0] = translationFCurve[0].evaluate(currentFrameNumber)
+                                if translationFCurve[1] != None:
+                                    translationVector[1] = translationFCurve[1].evaluate(currentFrameNumber)
+                                if translationFCurve[2] != None:
+                                    translationVector[2] = translationFCurve[2].evaluate(currentFrameNumber)
+                                    
+                            if rotationFCurve != None and rotationFCurve != ( [None] * 4 )  and self.mustEvaluateKeyframe(rotationFCurve, float(currentFrameNumber)):
+                                if rotationFCurve[0] != None:
+                                    rotationVector[0] = rotationFCurve[0].evaluate(currentFrameNumber)
+                                if rotationFCurve[1] != None:
+                                    rotationVector[1] = rotationFCurve[1].evaluate(currentFrameNumber)
+                                if rotationFCurve[2] != None:
+                                    rotationVector[2] = rotationFCurve[2].evaluate(currentFrameNumber)
+                                if rotationFCurve[3] != None:
+                                    rotationVector[3] = rotationFCurve[3].evaluate(currentFrameNumber)
+                            
+                            if scaleFCurve != None and scaleFCurve != ( [None] * 3 )  and self.mustEvaluateKeyframe(scaleFCurve, float(currentFrameNumber)):
+                                if scaleFCurve[0] != None:
+                                    scaleVector[0] = scaleFCurve[0].evaluate(currentFrameNumber)
+                                if scaleFCurve[1] != None:
+                                    scaleVector[1] = scaleFCurve[1].evaluate(currentFrameNumber)
+                                if scaleFCurve[2] != None:
+                                    scaleVector[2] = scaleFCurve[2].evaluate(currentFrameNumber)
+                                    
+                            poseTransform = self.createTransformMatrix(translationVector, rotationVector, scaleVector)
+                            translationVector, rotationVector, scaleVector = (restTransform * poseTransform).decompose()
+                            
                             currentKeyframe.translation = list(translationVector)
-                            
-                        if not self.compareQuaternion(rotationVector, pre_rot):
                             currentKeyframe.rotation = list(rotationVector)
-                            
-                        if not self.compareVector(scaleVector, pre_sca):
                             currentKeyframe.scale = list(scaleVector)
-                            
-                        # If we have at least one attribute changed in that keyframe, we store it
-                        if currentKeyframe.translation != None \
-                                or currentKeyframe.rotation != None \
-                                or currentKeyframe.scale != None:
-                            currentKeyframe.keytime = (keyframe - frameStart) * frameTime
-                            currentBone.addKeyframe(currentKeyframe)
-                            
-                    # If there is at least one keyframe for this bone, add it's data
-                    if currentBone.keyframes != None and len(currentBone.keyframes) > 0:
-                        # We operated with Blender coordinates the entire time, now we convert
-                        # to the target coordinates
-                        for keyframe in currentBone.keyframes:
-                            if keyframe.translation != None:
-                                keyframe.translation = self.convertVectorCoordinate(keyframe.translation)
-                            
-                            if keyframe.rotation != None:
-                                keyframe.rotation = self.convertQuaternionCoordinate(keyframe.rotation)
                                 
-                            if keyframe.scale != None:
-                                keyframe.scale = self.convertScaleCoordinate(keyframe.scale)
-                        
-                        # Finally add bone node to animation
-                        currentAnimation.addBone(currentBone)
-            
-            # If this action animates at least one bone, add it to the list of actions
-            if currentAnimation.bones != None and len(currentAnimation.bones) > 0:
-                generatedAnimations.append(currentAnimation)
+                            # If we have at least one attribute changed in that currentFrameNumber, we store it
+                            if currentKeyframe.translation != None \
+                                    or currentKeyframe.rotation != None \
+                                    or currentKeyframe.scale != None:
+                                currentKeyframe.keytime = (currentFrameNumber - frameStart) * frameTime
+                                currentBone.addKeyframe(currentKeyframe)
+                                
+                        # If there is at least one currentFrameNumber for this bone, add it's data
+                        if currentBone.keyframes != None and len(currentBone.keyframes) > 0:
+                            # We operated with Blender coordinates the entire time, now we convert
+                            # to the target coordinates
+                            for currentFrameNumber in currentBone.keyframes:
+                                if currentFrameNumber.translation != None:
+                                    currentFrameNumber.translation = self.convertVectorCoordinate(currentFrameNumber.translation)
+                                
+                                if currentFrameNumber.rotation != None:
+                                    currentFrameNumber.rotation = self.convertQuaternionCoordinate(currentFrameNumber.rotation)
+                                    
+                                if currentFrameNumber.scale != None:
+                                    currentFrameNumber.scale = self.convertScaleCoordinate(currentFrameNumber.scale)
+                            
+                            # Finally add bone node to animation
+                            currentAnimation.addBone(currentBone)
+                
+                # If this action animates at least one bone, add it to the list of actions
+                if currentAnimation.bones != None and len(currentAnimation.bones) > 0:
+                    generatedAnimations.append(currentAnimation)
 
         # Finally return the generated animations
         return generatedAnimations
@@ -890,6 +898,35 @@ class G3DExporter(bpy.types.Operator, ExportHelper, IOG3DOrientationHelper):
                 returnedFCurves[fcurve.array_index] = fcurve
 
         return returnedFCurves
+    
+    def mustEvaluateKeyframe(self, fCurves, frame):
+        """
+        Returns True if you should evaluate the coordinates for this frame on this curve
+        """
+        isKeyframe = False
+        hasNonLinearCurve= False
+        
+        if fCurves != None:
+            for curve in fCurves:
+                if curve != None:
+                    selectedKeyframe = None
+                    
+                    for keyframe in curve.keyframe_points:
+                        if keyframe.co[0] <= frame and (selectedKeyframe==None or keyframe.co[0] > selectedKeyframe.co[0]):
+                            selectedKeyframe = keyframe
+                            
+                    if selectedKeyframe != None:
+                        if selectedKeyframe.co[0] == frame:
+                            isKeyframe = True
+                            break
+                        elif selectedKeyframe.interpolation != "LINEAR":
+                            hasNonLinearCurve = True
+                            break
+                        
+        return isKeyframe or hasNonLinearCurve
+                        
+                    
+        
     
     def createTransformMatrix(self , locationVector , quaternionVector, scaleVector):
         """Create a transform matrix from a location vector, a rotation quaternion and a scale vector"""

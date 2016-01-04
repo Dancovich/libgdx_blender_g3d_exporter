@@ -17,6 +17,7 @@
 import json
 from json.encoder import encode_basestring_ascii, encode_basestring, FLOAT_REPR,\
     INFINITY
+import collections
 
 c_make_encoder = None
 
@@ -100,7 +101,9 @@ def _count_indent_g3d(json_mesh_value):
     count_value = 0
     default_count_value = 12
     
-    if json_mesh_value != None and json_mesh_value.__class__ is dict and "attributes" in json_mesh_value.keys():
+    if json_mesh_value != None \
+            and (isinstance(json_mesh_value, dict) or isinstance(json_mesh_value, collections.OrderedDict)) \
+            and "attributes" in json_mesh_value.keys():
         for attribute in json_mesh_value["attributes"]:
             if attribute == "POSITION" or attribute == "NORMAL" \
                     or attribute == "TANGENT" or attribute == "BINORMAL":

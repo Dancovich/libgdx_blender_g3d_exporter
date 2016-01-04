@@ -49,6 +49,7 @@ class Vertex(object):
     def normalizeBlendWeight(self):
         if self.attributes != None:
             blendWeightSum = 0.0
+            
             for attr in self.attributes:
                 if attr.name.startswith(VertexAttribute.BLENDWEIGHT,0,len(VertexAttribute.BLENDWEIGHT)):
                     blendWeightSum = blendWeightSum + attr.value[1]
@@ -414,18 +415,19 @@ class Mesh(object):
     
     _id = ""
     
-    _vertices = []
+    _vertices = None
     
-    _parts = []
+    _parts = None
     
     # This is a cache so we know all attributes this mesh has.
     # All the real attributes are in the vertices
-    _attributes = []
+    _attributes = None
     
     def __init__(self):
         self._id = ""
         self._vertices = []
         self._parts = []
+        self._attributes = []
     
     @property
     def id(self):
@@ -486,6 +488,56 @@ class Mesh(object):
         
         self._parts.append(meshPart)
         meshPart.parentMesh = self
+        
+    def normalizeAttributes(self):
+        """
+        Makes sure all vertices have the same number of attributes.
+        More specifically, individual vertices may not have all BLENDWEIGHT or TEXCOORD
+        attributes but if that's the case we need to add blank values for those
+        attributes as LibGDX requires all vertices to have the same number of attribute values
+        """
+        
+        # Naming for our attributes
+        blendWeightAttrName = VertexAttribute.BLENDWEIGHT + "%d"
+        texCoordAttrName = VertexAttribute.TEXCOORD + "%d"
+        
+        # This is how many total attributes we have. We can skip any vertices
+        # that have that many attributes
+        totalAttributes = len(self._attributes)
+        
+        # Figure out how many TEXCOORD and BLENDWEIGHT attributes we have
+        numOfTexCoord = 0
+        numOfBlendWeight = 0
+        for attr in self._attributes:
+            if attr.startswith(VertexAttribute.BLENDWEIGHT,0,len(VertexAttribute.BLENDWEIGHT)):
+                numOfBlendWeight = numOfBlendWeight + 1
+            elif attr.startswith(VertexAttribute.TEXCOORD,0,len(VertexAttribute.TEXCOORD)):
+                numOfTexCoord = numOfTexCoord + 1
+                
+        # Normalize any vertex that has less than these number of attributes
+        for vertex in self._vertices:
+            if len(vertex.attributes) == totalAttributes:
+                continue
+            
+            vertexNumOfTexCoord = 0
+            vertexNumOfBlendWeight = 0
+            
+            for attr in vertex.attributes:
+                if attr.name.startswith(VertexAttribute.BLENDWEIGHT,0,len(VertexAttribute.BLENDWEIGHT)):
+                    vertexNumOfBlendWeight = vertexNumOfBlendWeight + 1
+                elif attr.name.startswith(VertexAttribute.TEXCOORD,0,len(VertexAttribute.TEXCOORD)):
+                    vertexNumOfTexCoord = vertexNumOfTexCoord + 1
+                    
+            # Add missing attributes
+            for newBlendIndex in range(vertexNumOfBlendWeight, numOfBlendWeight):
+                newAttribute = VertexAttribute(name=(blendWeightAttrName % newBlendIndex) , value=[0.0,0.0] )
+                vertex.add(newAttribute)
+                
+            for newTexCoordIndex in range(vertexNumOfTexCoord, numOfTexCoord):
+                newAttribute = VertexAttribute(name=(texCoordAttrName % newTexCoordIndex) , value=[0.0,0.0] )
+                vertex.add(newAttribute)
+            
+        
         
     def __repr__(self):
         value = "VERTICES:\n%r\n\nPARTS:\n%r\n\n" % (self._vertices, self._parts)
@@ -812,16 +864,19 @@ class Keyframe(object):
 class G3DModel(object):
     """ Our model class that will later be exported to G3D """
     
-    _meshes = []
+    _meshes = None
     
-    _materials = []
+    _materials = None
     
-    _nodes = []
+    _nodes = None
     
-    _animations = []
+    _animations = None
     
     def __init__(self):
         self._meshes = []
+        self._materials = []
+        self._nodes = []
+        self._animations = []
         
     @property
     def meshes(self):

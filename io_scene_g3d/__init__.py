@@ -1,3 +1,5 @@
+# <pep8 compliant>
+
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  This program is free software; you can redistribute it and/or
@@ -16,7 +18,15 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-# <pep8-80 compliant>
+import io_scene_g3d
+
+if "bpy" in locals():
+    import importlib
+    if "g3d_exporter" in locals():
+        importlib.reload(io_scene_g3d.g3d_exporter)
+
+import bpy
+from .g3d_exporter import G3DJExporterOperator, G3DBExporterOperator
 
 bl_info = {
     "name": "LibGDX G3D Exporter",
@@ -24,11 +34,8 @@ bl_info = {
     "version": (0, 2, 0),
     "blender": (2, 76, 0),
     "location": "File > Import-Export",
-    "description": "Export scene to G3D (LibGDX) format",
+    "description": "Export scene to LibGDX format",
     "category": "Import-Export"}
-
-import bpy
-from io_scene_g3d.g3d_exporter import G3DExporter
 
 try:
     import pydevd
@@ -36,19 +43,26 @@ try:
 except ImportError:
     pass
 
+
 class Mesh(object):
+
     def __init__(self, s):
         self.s = s
+
     def __repr__(self):
         return '<Mesh(%s)>' % self.s
 
+
 def menu_func(self, context):
-    self.layout.operator(G3DExporter.bl_idname, text="LibGDX G3D text format (.g3dj)")
+    self.layout.operator(G3DJExporterOperator.bl_idname, text="LibGDX G3D text format (.g3dj)")
+    self.layout.operator(G3DBExporterOperator.bl_idname, text="LibGDX G3D binary format (.g3db)")
+
 
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.INFO_MT_file_export.append(menu_func)
-    
+
+
 def unregister():
     bpy.utils.unregister_module(__name__)
     bpy.types.INFO_MT_file_export.remove(menu_func)

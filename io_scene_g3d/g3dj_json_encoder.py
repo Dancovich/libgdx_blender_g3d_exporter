@@ -1,3 +1,5 @@
+# <pep8 compliant>
+
 #################################################################################
 # Copyright 2014 See AUTHORS file.
 #
@@ -15,28 +17,28 @@
 #################################################################################
 
 import json
-from json.encoder import encode_basestring_ascii, encode_basestring, FLOAT_REPR,\
-    INFINITY
+from json.encoder import encode_basestring_ascii, encode_basestring, FLOAT_REPR, INFINITY
 import collections
 
 c_make_encoder = None
 
+
 class G3DJsonEncoder(json.JSONEncoder):
     """ Json encoder that can print N non-list values before indenting """
-    
+
     float_round = 6
     float_format = None
-    
+
     def __init__(self, skipkeys=False, ensure_ascii=True,
-            check_circular=True, allow_nan=True, sort_keys=False,
-            indent=None, separators=None, default=None, float_round = 6):
+                 check_circular=True, allow_nan=True, sort_keys=False,
+                 indent=None, separators=None, default=None, float_round=6):
         self.float_round = float_round
-        self.float_format = "%" + str(self.float_round+3) + "." + str(self.float_round) + "f"
-        
+        self.float_format = "%" + str(self.float_round + 3) + "." + str(self.float_round) + "f"
+
         super().__init__(skipkeys, ensure_ascii,
-            check_circular, allow_nan, sort_keys,
-            indent, separators, default)
-    
+                         check_circular, allow_nan, sort_keys,
+                         indent, separators, default)
+
     def iterencode(self, o, _one_shot=False):
         """
         Encode the given object and yield each string
@@ -58,11 +60,11 @@ class G3DJsonEncoder(json.JSONEncoder):
             _encoder = encode_basestring
 
         def floatstr(o, allow_nan=self.allow_nan,
-                _repr=FLOAT_REPR, _inf=INFINITY, _neginf=-INFINITY):
+                     _repr=FLOAT_REPR, _inf=INFINITY, _neginf=-INFINITY):
             """
              *** Overwrites JSONEncoder.iterencode.floatstr to round floats before returning
             """
-            
+
             # Check for specials.  Note that this type of test is processor
             # and/or platform-specific, so do tests which don't depend on the
             # internals.
@@ -83,9 +85,7 @@ class G3DJsonEncoder(json.JSONEncoder):
 
             return text
 
-
-        if (_one_shot and c_make_encoder is not None
-                and self.indent is None):
+        if (_one_shot and c_make_encoder is not None and self.indent is None):
             _iterencode = c_make_encoder(
                 markers, self.default, _encoder, self.indent,
                 self.key_separator, self.item_separator, self.sort_keys,
@@ -96,12 +96,13 @@ class G3DJsonEncoder(json.JSONEncoder):
                 self.key_separator, self.item_separator, self.sort_keys,
                 self.skipkeys, _one_shot)
         return _iterencode(o, 0)
-    
+
+
 def _count_indent_g3d(json_mesh_value):
     count_value = 0
     default_count_value = 12
-    
-    if json_mesh_value != None \
+
+    if json_mesh_value is not None \
             and (isinstance(json_mesh_value, dict) or isinstance(json_mesh_value, collections.OrderedDict)) \
             and "attributes" in json_mesh_value.keys():
         for attribute in json_mesh_value["attributes"]:
@@ -114,23 +115,23 @@ def _count_indent_g3d(json_mesh_value):
                 count_value = count_value + 1
             elif attribute.startswith("TEXCOORD") or attribute.startswith("BLENDWEIGHT"):
                 count_value = count_value + 2
-    
+
     if count_value != 0:
         return count_value
     else:
         return default_count_value
-        
+
 
 def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
-        _key_separator, _item_separator, _sort_keys, _skipkeys, _one_shot):
+                         _key_separator, _item_separator, _sort_keys, _skipkeys, _one_shot):
     """
-      *** Overwrites json.encoder._make_iterencode 
+      *** Overwrites json.encoder._make_iterencode
     """
 
     if _indent is not None and not isinstance(_indent, str):
         _indent = ' ' * _indent
 
-    def _iterencode_list(lst, _current_indent_level, _indentate = 12):
+    def _iterencode_list(lst, _current_indent_level, _indentate=12):
         if not lst:
             yield '[]'
             return
@@ -161,7 +162,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
                 buf = separator
             else:
                 buf = _item_separator
-            
+
             if isinstance(value, str):
                 yield buf + _encoder(value)
                 lastWasList = False
@@ -193,7 +194,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
                 if isinstance(value, (list, tuple)):
                     chunks = _iterencode_list(value, _current_indent_level)
                 elif isinstance(value, dict):
-                    chunks = _iterencode_dict(value, _current_indent_level, _list_indent = _count_indent_g3d(value))
+                    chunks = _iterencode_dict(value, _current_indent_level, _list_indent=_count_indent_g3d(value))
                 else:
                     chunks = _iterencode(value, _current_indent_level)
                 for chunk in chunks:
@@ -205,7 +206,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
         if markers is not None:
             del markers[markerid]
 
-    def _iterencode_dict(dct, _current_indent_level, _list_indent = 12):
+    def _iterencode_dict(dct, _current_indent_level, _list_indent=12):
         if not dct:
             yield '{}'
             return
@@ -267,11 +268,11 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
                 yield _floatstr(value)
             else:
                 if isinstance(value, (list, tuple)):
-                    chunks = _iterencode_list(value, _current_indent_level, _indentate = _list_indent)
+                    chunks = _iterencode_list(value, _current_indent_level, _indentate=_list_indent)
                 elif isinstance(value, dict):
-                    chunks = _iterencode_dict(value, _current_indent_level, _list_indent = _count_indent_g3d(value))
+                    chunks = _iterencode_dict(value, _current_indent_level, _list_indent=_count_indent_g3d(value))
                 else:
-                    chunks = _iterencode(value, _current_indent_level, _obj_indent = _count_indent_g3d(value))
+                    chunks = _iterencode(value, _current_indent_level, _obj_indent=_count_indent_g3d(value))
                 for chunk in chunks:
                     yield chunk
         if newline_indent is not None:
@@ -281,7 +282,7 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
         if markers is not None:
             del markers[markerid]
 
-    def _iterencode(o, _current_indent_level, _obj_indent = 12):
+    def _iterencode(o, _current_indent_level, _obj_indent=12):
         if isinstance(o, str):
             yield _encoder(o)
         elif o is None:
@@ -295,10 +296,10 @@ def _make_iterencode_g3d(markers, _default, _encoder, _indent, _floatstr,
         elif isinstance(o, float):
             yield _floatstr(o)
         elif isinstance(o, (list, tuple)):
-            for chunk in _iterencode_list(o, _current_indent_level, _indentate = _obj_indent):
+            for chunk in _iterencode_list(o, _current_indent_level, _indentate=_obj_indent):
                 yield chunk
         elif isinstance(o, dict):
-            for chunk in _iterencode_dict(o, _current_indent_level, _list_indent = _count_indent_g3d(o)):
+            for chunk in _iterencode_dict(o, _current_indent_level, _list_indent=_count_indent_g3d(o)):
                 yield chunk
         else:
             if markers is not None:

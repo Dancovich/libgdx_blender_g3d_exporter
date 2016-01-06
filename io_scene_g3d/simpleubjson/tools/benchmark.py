@@ -7,6 +7,8 @@
 # you should have received as part of this distribution.
 #
 
+# <pep8 compliant>
+
 import os
 import getopt
 import pickle
@@ -70,7 +72,8 @@ def make_benchmark(name, count):
     print
 
     src = simpleubjson.encode(data, spec='draft-9')
-    func = lambda *a, **k: list(simpleubjson.decode(*a, **k))
+
+    def func(x): lambda *a, **k: list(simpleubjson.decode(*a, **k))
     total = run_test(func, count, src, spec='draft-9')
     print(format_results('simpleubjson',  simpleubjson.__version__,
                          'Decoded Draft-9', total, count))

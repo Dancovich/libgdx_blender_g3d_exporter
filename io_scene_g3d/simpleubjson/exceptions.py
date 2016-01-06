@@ -7,6 +7,7 @@
 # you should have received as part of this distribution.
 #
 
+# <pep8 compliant>
 
 class DecodeError(ValueError):
     """UBJSON data decoding error."""

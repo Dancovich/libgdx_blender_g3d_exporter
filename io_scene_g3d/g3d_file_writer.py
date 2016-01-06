@@ -1,5 +1,3 @@
-# <pep8 compliant>
-
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  This program is free software; you can redistribute it and/or
@@ -17,6 +15,8 @@
 #  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # ##### END GPL LICENSE BLOCK #####
+
+# <pep8 compliant>
 
 import json
 
@@ -265,7 +265,7 @@ class G3DJWriter(G3DBaseWriter):
 
 class G3DBWriter(G3DBaseWriter):
 
-    ordered = False
+    ordered = True
 
     def export(self, g3dModel, filepath):
         baseModel = self.mountJsonOutput(g3dModel)

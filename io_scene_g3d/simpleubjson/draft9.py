@@ -7,6 +7,8 @@
 # you should have received as part of this distribution.
 #
 
+# <pep8 compliant>
+
 from decimal import Decimal
 from struct import pack, unpack
 from . import NOOP as NOOP_SENTINEL
@@ -18,6 +20,7 @@ from .compat import (
 from .exceptions import (
     EncodeError, MarkerError, EarlyEndOfStreamError
 )
+from collections import OrderedDict
 
 
 NOOP = b('N')
@@ -127,12 +130,14 @@ class Draft9Decoder(object):
         if tag in NUMBERS:
             if tag == INT8:
                 # Trivial operations for trivial cases saves a lot of time
-                value = ord(self.read(1))
-                if value > 128:
-                    value -= 256
-                    #value, = unpack('>b', self.read(1))
+                # value = ord(self.read(1))
+                # if value > 128:
+                #    value -= 256
+                #    #value, = unpack('>b', self.read(1))
+                value, = unpack('>h', self.read(2))
             elif tag == UINT8:
                 value = ord(self.read(1))
+                # value, = unpack('>H', self.read(2))
             elif tag == INT16:
                 value, = unpack('>h', self.read(2))
             elif tag == INT32:
@@ -228,6 +233,7 @@ class Draft9Decoder(object):
         next_tlv = self.next_tlv
         array_close = ARRAY_CLOSE
         container_openers = set([ARRAY_OPEN, OBJECT_OPEN])
+
         def array_stream():
             while 1:
                 tag, length, value = next_tlv()
@@ -385,33 +391,33 @@ class Draft9Encoder(object):
 
     def encode_int(self, obj):
         if (-2 ** 7) <= obj <= (2 ** 7 - 1):
-            return INT8 + CHARS[obj % 256]
+            # return INT8 + CHARS[obj % 256]
+            return INT8 + pack('>h', obj)
         elif 0 <= obj <= 255:
             return UINT8 + CHARS[obj]
+            # return UINT8 + pack('>H', obj)
         elif (-2 ** 15) <= obj <= (2 ** 15 - 1):
             return INT16 + pack('>h', obj)
         elif (-2 ** 31) <= obj <= (2 ** 31 - 1):
             return INT32 + pack('>i', obj)
-        #elif (-2 ** 63) <= obj <= (2 ** 63 - 1):
-        else:
+        elif (-2 ** 63) <= obj <= (2 ** 63 - 1):
             return INT64 + pack('>q', obj)
-        #else:
-        #    return self.encode_decimal(Decimal(obj))
+        else:
+            return self.encode_decimal(Decimal(obj))
     dispatch[int] = encode_int
     dispatch[long] = encode_int
 
     def encode_float(self, obj):
-        if isinf(obj) or isnan(obj):
-            return NULL
+        if abs(obj) == 0.0:
+            return FLOAT + pack('>f', obj)
         elif 1.18e-38 <= abs(obj) <= 3.4e38:
             return FLOAT + pack('>f', obj)
-        #elif 2.23e-308 <= abs(obj) < 1.8e308:
-        else:
+        elif 2.23e-308 <= abs(obj) < 1.8e308:
             return DOUBLE + pack('>d', obj)
-        #elif isinf(obj) or isnan(obj):
-        #    return NULL
-        #else:
-        #    return self.encode_decimal(Decimal(obj))
+        elif isinf(obj) or isnan(obj):
+            return NULL
+        else:
+            return self.encode_decimal(Decimal(obj))
     dispatch[float] = encode_float
 
     def _encode_str(self, obj):
@@ -424,7 +430,7 @@ class Draft9Encoder(object):
             return STRING + UINT8 + CHARS[length] + obj
         return STRING + self.encode_int(length) + obj
 
-    def encode_bytes(self, obj): 
+    def encode_bytes(self, obj):
         try:
             obj.decode('utf-8')
         except UnicodeDecodeError:
@@ -458,7 +464,7 @@ class Draft9Encoder(object):
 
     def encode_dict(self, obj):
         yield OBJECT_OPEN
-        if isinstance(obj, dict):
+        if isinstance(obj, dict) or isinstance(obj, OrderedDict):
             items = obj.items()
         else:
             items = obj
@@ -473,3 +479,4 @@ class Draft9Encoder(object):
         yield OBJECT_CLOSE
     dispatch[dict] = encode_dict
     dispatch[dict_itemsiterator] = encode_dict
+    dispatch[OrderedDict] = encode_dict

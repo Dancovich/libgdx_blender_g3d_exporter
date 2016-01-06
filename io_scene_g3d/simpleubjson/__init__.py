@@ -7,6 +7,15 @@
 # you should have received as part of this distribution.
 #
 
+# <pep8 compliant>
+
+import warnings
+from .version import __version__
+# from .draft8 import Draft8Decoder, Draft8Encoder
+from .draft9 import Draft9Decoder, Draft9Encoder
+from .tools.inspect import pprint
+from .exceptions import DecodeError, EncodeError
+
 #: Noop sentinel value
 NOOP = type('NoOp', (object,), {'__slots__': ()})()
 _EOS = type('EndOfStream', (object,), {'__slots__': ()})
@@ -16,18 +25,11 @@ EOS_A = type('EndOfArrayStream', (_EOS,), {'__slots__': ()})()
 EOS_O = type('EndOfObjectStream', (_EOS,), {'__slots__': ()})()
 del _EOS
 
-import warnings
-from .version import __version__
-from .draft8 import Draft8Decoder, Draft8Encoder
-from .draft9 import Draft9Decoder, Draft9Encoder
-from .tools.inspect import pprint
-from .exceptions import DecodeError, EncodeError
-
 __all__ = ['decode', 'encode', 'pprint', 'NOOP', 'DecodeError', 'EncodeError',
            '__version__']
 
-_draft8_decoder = Draft8Decoder
-_draft8_encoder = Draft8Encoder
+# _draft8_decoder = Draft8Decoder
+# _draft8_encoder = Draft8Encoder
 
 _draft9_decoder = Draft9Decoder
 _draft9_encoder = Draft9Encoder
@@ -51,10 +53,11 @@ def decode(data, allow_noop=False, spec='draft9'):
     :return: Decoded Python object. See mapping table below.
     """
 
-    if spec.lower() in ['draft8', 'draft-8']:
-        warnings.warn(_DRAFT8_DEPRECATED, DeprecationWarning)
-        return _draft8_decoder(data, allow_noop).decode_next()
-    elif spec.lower() in ['draft9', 'draft-9']:
+    # if spec.lower() in ['draft8', 'draft-8']:
+    #    warnings.warn(_DRAFT8_DEPRECATED, DeprecationWarning)
+    #    return _draft8_decoder(data, allow_noop).decode_next()
+    # elif spec.lower() in ['draft9', 'draft-9']:
+    if spec.lower() in ['draft9', 'draft-9']:
         return _draft9_decoder(data, allow_noop).decode_next()
     else:
         raise ValueError('Unknown or unsupported specification %s' % spec)
@@ -78,10 +81,11 @@ def encode(data, output=None, default=None, spec='draft-9'):
              If `output` param is specified, all data would be written into it
              by chunks and None will be returned.
     """
-    if spec.lower() in ['draft8', 'draft-8']:
-        warnings.warn(_DRAFT8_DEPRECATED, DeprecationWarning)
-        res = _draft8_encoder(default).encode_next(data)
-    elif spec.lower() in ['draft9', 'draft-9']:
+    # if spec.lower() in ['draft8', 'draft-8']:
+    #    warnings.warn(_DRAFT8_DEPRECATED, DeprecationWarning)
+    #    res = _draft8_encoder(default).encode_next(data)
+    # elif spec.lower() in ['draft9', 'draft-9']:
+    if spec.lower() in ['draft9', 'draft-9']:
         res = _draft9_encoder(default).encode_next(data)
     else:
         raise ValueError('Unknown or unsupported specification %s' % spec)
@@ -89,4 +93,3 @@ def encode(data, output=None, default=None, spec='draft-9'):
         output.write(res)
     else:
         return res
-

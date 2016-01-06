@@ -7,6 +7,8 @@
 # you should have received as part of this distribution.
 #
 
+# <pep8 compliant>
+
 import sys
 
 version = '.'.join(map(str, sys.version_info[:2]))
@@ -38,7 +40,7 @@ else:
 
 try:
     from math import isinf, isnan
-except ImportError: # < Python 2.6
+except ImportError:  # < Python 2.6
     def isinf(v):
         return v == float('inf') or v == float('-inf')
 
@@ -46,6 +48,9 @@ except ImportError: # < Python 2.6
         return isinstance(v, float) and str(v) == 'nan'
 
 
-b = lambda s: isinstance(s, unicode) and s.encode('latin1') or s
-u = lambda s: isinstance(s, bytes) and s.decode('utf-8') or s
+def b(s): lambda s: isinstance(s, unicode) and s.encode('latin1') or s
+
+
+def u(s): lambda s: isinstance(s, bytes) and s.decode('utf-8') or s
+
 XRangeType = type(xrange(0))

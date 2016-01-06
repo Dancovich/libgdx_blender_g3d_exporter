@@ -7,6 +7,8 @@
 # you should have received as part of this distribution.
 #
 
+# <pep8 compliant>
+
 __version_info__ = (0, 7, 0, '', 0)
 __version__ = '%(version)s%(tag)s%(build)s' % {
     'version': '.'.join(map(str, __version_info__[:3])),

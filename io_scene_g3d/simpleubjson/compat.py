@@ -48,9 +48,10 @@ except ImportError:  # < Python 2.6
         return isinstance(v, float) and str(v) == 'nan'
 
 
-def b(s): lambda s: isinstance(s, unicode) and s.encode('latin1') or s
+# b = lambda s: isinstance(s, unicode) and s.encode('latin1') or s
+def b(s): return isinstance(s, unicode) and s.encode('latin1') or s
 
 
-def u(s): lambda s: isinstance(s, bytes) and s.decode('utf-8') or s
-
+# u = lambda s: isinstance(s, bytes) and s.decode('utf-8') or s
+def u(s): return isinstance(s, bytes) and s.decode('utf-8') or s
 XRangeType = type(xrange(0))

@@ -40,6 +40,7 @@ from .domain_classes import (Texture,
                              MeshPart,
                              Mesh,
                              G3DModel)
+from io_scene_g3d.util import FLOAT_ROUND
 
 IOG3DOrientationHelper = orientation_helper_factory("IOG3DOrientationHelper", axis_forward='-Z', axis_up='Y')
 
@@ -116,16 +117,24 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         self.g3dModel = G3DModel()
 
         # Generate the mesh list of the model
-        self.g3dModel.meshes = self.generateMeshes(context)
+        meshes = self.generateMeshes(context)
+        if meshes is not None:
+            self.g3dModel.meshes = meshes
 
         # Generate the materials used in the model
-        self.g3dModel.materials = self.generateMaterials(context)
+        materials = self.generateMaterials(context)
+        if materials is not None:
+            self.g3dModel.materials = materials
 
         # Generate the nodes binding mesh parts, materials and bones
-        self.g3dModel.nodes = self.generateNodes(context)
+        nodes = self.generateNodes(context)
+        if nodes is not None:
+            self.g3dModel.nodes = nodes
 
         # Convert action curves to animations
-        self.g3dModel.animations = self.generateAnimations(context)
+        animations = self.generateAnimations(context)
+        if animations is not None:
+            self.g3dModel.animations = animations
 
         # Export to the final file
         exporter = None
@@ -181,9 +190,12 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 continue
 
             for blMaterialIndex in range(0, len(currentBlMesh.materials)):
-
+                
                 # Fills the part here
                 currentMeshPart = MeshPart(meshPartId=currentBlMeshName + "_part" + str(blMaterialIndex))
+                
+                # Here we get only vertex groups used in this part
+                vertexGroupsForMaterial = self.listPartVertexGroups(currentObjNode, currentBlMesh, blMaterialIndex)
 
                 for poly in currentBlMesh.polygons:
                     Util.debug(None, "  Processing material index %d" % blMaterialIndex)
@@ -312,8 +324,8 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                                 boneIndex = -1
                                 blendWeightIndex = 0
 
-                                for vertexGroupIndex in range(0, len(currentObjNode.vertex_groups)):
-                                    vertexGroup = currentObjNode.vertex_groups[vertexGroupIndex]
+                                for vertexGroupIndex in range(0, len(vertexGroupsForMaterial)):
+                                    vertexGroup = vertexGroupsForMaterial[vertexGroupIndex]
 
                                     # We can only export this ammount of bones per vertex
                                     if blendWeightIndex >= self.bonesPerVertex:
@@ -393,8 +405,12 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
             currentMesh = currentObjNode.data
 
+            atLeastOneMaterial = False
             if currentMesh is not None and len(currentMesh.materials) > 0:
                 for blMaterial in currentMesh.materials:
+                    if blMaterial is None:
+                        continue
+
                     currentMaterial = Material()
 
                     currentMaterial.id = blMaterial.name
@@ -476,7 +492,13 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         currentMaterial.textures = materialTextures
 
                     # Adding this material to the full list
+                    atLeastOneMaterial = True
                     generatedMaterials.append(currentMaterial)
+
+                # If all materials where None (unassigned material slots) then we actually didn't export materials and
+                # we need to raise an exception
+                if not atLeastOneMaterial:
+                    raise RuntimeError("Can't export nodes without materials. Add at least one material to node '%s'." % currentObjNode.name)
             else:
                 raise RuntimeError("Can't export nodes without materials. Add at least one material to node '%s'." % currentObjNode.name)
 
@@ -589,20 +611,24 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     continue
 
                 for blMaterialIndex in range(0, len(currentBlMesh.materials)):
+                    currentBlMaterial = currentBlMesh.materials[blMaterialIndex]
+                    if currentBlMaterial is None:
+                        continue
+
                     nodePart = NodePart()
 
                     currentBlMeshName = currentBlMesh.name
                     nodePart.meshPartId = currentBlMeshName + "_part" + str(blMaterialIndex)
 
-                    nodePart.materialId = currentBlMesh.materials[blMaterialIndex].name
+                    nodePart.materialId = currentBlMaterial.name
 
                     # Maps material textures to the TEXCOORD attributes
                     for uvIndex in range(len(currentBlMesh.uv_layers)):
                         blUvLayer = currentBlMesh.uv_layers[uvIndex]
                         currentTexCoord = []
 
-                        for texIndex in range(len(currentBlMesh.materials[blMaterialIndex].texture_slots)):
-                            blTexSlot = currentBlMesh.materials[blMaterialIndex].texture_slots[texIndex]
+                        for texIndex in range(len(currentBlMaterial.texture_slots)):
+                            blTexSlot = currentBlMaterial.texture_slots[texIndex]
 
                             if (blTexSlot is None or blTexSlot.texture_coords != 'UV' or blTexSlot.texture.type != 'IMAGE' or blTexSlot.texture.__class__ is not bpy.types.ImageTexture):
                                 continue
@@ -617,7 +643,9 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     if self.exportArmature and len(blNode.vertex_groups) > 0:
                         Util.debug(None, "Writing bones for node %s" % blNode.name)
 
-                        for blVertexGroup in blNode.vertex_groups:
+                        # Getting only the vertex groups associated with this node part
+                        vertexGroupsForMaterial = self.listPartVertexGroups(blNode, blNode.data, blMaterialIndex)
+                        for blVertexGroup in vertexGroupsForMaterial:
                             # Try to find an armature with a bone associated with this vertex group
                             if blNode.parent is not None and blNode.parent.type == 'ARMATURE':
                                 blArmature = blNode.parent.data
@@ -828,6 +856,38 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         bm.to_mesh(me)
         bm.free()
         del bmesh
+
+    def listPartVertexGroups(self, blObject, blMesh, materialIndex):
+        """
+        Lists all vertex groups associated with polys shaded with certain material.
+        """
+        vertexGroups = []
+        
+        for vertexGroupIndex in range(0, len(blObject.vertex_groups)):
+            vertexGroup = blObject.vertex_groups[vertexGroupIndex]
+            groupIsInPart = False
+
+            for poly in blMesh.polygons:
+                if (poly.material_index != materialIndex):
+                    continue
+
+                for loopIndex in poly.loop_indices:
+                    blLoop = blMesh.loops[loopIndex]
+
+                    try:
+                        weightValue = vertexGroup.weight(blLoop.vertex_index)
+
+                        if round(weightValue, FLOAT_ROUND) != 0.0:
+                            vertexGroups.append(vertexGroup)
+                            groupIsInPart = True
+                            break
+                    except:
+                        pass
+            
+                if groupIsInPart:
+                    break
+
+        return vertexGroups
 
     def convertVectorCoordinate(self, co):
         """

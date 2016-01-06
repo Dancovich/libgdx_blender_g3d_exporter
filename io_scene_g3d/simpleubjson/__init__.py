@@ -7,15 +7,6 @@
 # you should have received as part of this distribution.
 #
 
-# <pep8 compliant>
-
-import warnings
-from .version import __version__
-# from .draft8 import Draft8Decoder, Draft8Encoder
-from .draft9 import Draft9Decoder, Draft9Encoder
-from .tools.inspect import pprint
-from .exceptions import DecodeError, EncodeError
-
 #: Noop sentinel value
 NOOP = type('NoOp', (object,), {'__slots__': ()})()
 _EOS = type('EndOfStream', (object,), {'__slots__': ()})
@@ -24,6 +15,13 @@ EOS = _EOS()
 EOS_A = type('EndOfArrayStream', (_EOS,), {'__slots__': ()})()
 EOS_O = type('EndOfObjectStream', (_EOS,), {'__slots__': ()})()
 del _EOS
+
+import warnings
+from .version import __version__
+# from .draft8 import Draft8Decoder, Draft8Encoder
+from .draft9 import Draft9Decoder, Draft9Encoder
+from .tools.inspect import pprint
+from .exceptions import DecodeError, EncodeError
 
 __all__ = ['decode', 'encode', 'pprint', 'NOOP', 'DecodeError', 'EncodeError',
            '__version__']

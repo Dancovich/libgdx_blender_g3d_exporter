@@ -613,7 +613,7 @@ class MeshPart(object):
     def __repr__(self):
         reprStr = "{\n    ID: %s\n    TYPE: %s\n" % (self.id, self.type)
 
-        if self.parentMesh is not None:
+        if self.parentMesh is not None and self._vertices is not None:
             reprStr = reprStr + ("    INDICES (total of %d): [" % len(self._vertices))
 
             firstTime = True
@@ -897,7 +897,7 @@ class G3DModel(object):
 
     @meshes.setter
     def meshes(self, meshes):
-        if meshes is None or not isinstance(meshes, list) or len(meshes) == 0 or not isinstance(meshes[0], Mesh):
+        if meshes is None or not isinstance(meshes, list):
             raise TypeError("'meshes' must be a list of Mesh")
 
         self._meshes = meshes

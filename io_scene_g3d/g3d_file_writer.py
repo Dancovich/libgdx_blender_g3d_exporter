@@ -73,9 +73,10 @@ class G3DBaseWriter(object):
                     partSection["type"] = part.type
                     partSection["indices"] = []
 
-                    for vertex in part.vertices:
-                        vertexIndex = mesh.vertices.index(vertex)
-                        partSection["indices"].append(vertexIndex)
+                    if part.vertices is not None:
+                        for vertex in part.vertices:
+                            vertexIndex = mesh.vertices.index(vertex)
+                            partSection["indices"].append(vertexIndex)
 
                     meshSection["parts"].append(partSection)
 
@@ -275,4 +276,5 @@ class G3DBWriter(G3DBaseWriter):
         output_file.write(outputdata)
         output_file.close()
         
-        simpleubjson.pprint(outputdata)
+        if util.LOG_LEVEL >= util._DEBUG_: 
+            simpleubjson.pprint(outputdata)

@@ -392,22 +392,26 @@ class Draft9Encoder(object):
             return INT16 + pack('>h', obj)
         elif (-2 ** 31) <= obj <= (2 ** 31 - 1):
             return INT32 + pack('>i', obj)
-        elif (-2 ** 63) <= obj <= (2 ** 63 - 1):
-            return INT64 + pack('>q', obj)
+        #elif (-2 ** 63) <= obj <= (2 ** 63 - 1):
         else:
-            return self.encode_decimal(Decimal(obj))
+            return INT64 + pack('>q', obj)
+        #else:
+        #    return self.encode_decimal(Decimal(obj))
     dispatch[int] = encode_int
     dispatch[long] = encode_int
 
     def encode_float(self, obj):
-        if 1.18e-38 <= abs(obj) <= 3.4e38:
-            return FLOAT + pack('>f', obj)
-        elif 2.23e-308 <= abs(obj) < 1.8e308:
-            return DOUBLE + pack('>d', obj)
-        elif isinf(obj) or isnan(obj):
+        if isinf(obj) or isnan(obj):
             return NULL
+        elif 1.18e-38 <= abs(obj) <= 3.4e38:
+            return FLOAT + pack('>f', obj)
+        #elif 2.23e-308 <= abs(obj) < 1.8e308:
         else:
-            return self.encode_decimal(Decimal(obj))
+            return DOUBLE + pack('>d', obj)
+        #elif isinf(obj) or isnan(obj):
+        #    return NULL
+        #else:
+        #    return self.encode_decimal(Decimal(obj))
     dispatch[float] = encode_float
 
     def _encode_str(self, obj):

@@ -1,17 +1,17 @@
 package com.exporter.blenderexporter.desktop;
 
-import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
-import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.exporter.blenderexporter.ExportedModelLoader;
 
 public class DesktopLauncher {
 	public static void main (String[] arg) {
-		LwjglApplicationConfiguration config = new LwjglApplicationConfiguration();
+        Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
 
-		config.width = 800;
-        config.height = 600;
-        config.title = "Blender G3D Exporter Test";
+        config.useVsync(true);
+        config.setWindowedMode(800, 600);
+		config.setTitle("Blender G3D Exporter Test");
 
-		new LwjglApplication(new ExportedModelLoader(), config);
+        new Lwjgl3Application(new ExportedModelLoader(), config);
 	}
 }

@@ -23,6 +23,7 @@ import json
 from collections import OrderedDict
 
 from io_scene_g3d import util, simpleubjson
+from io_scene_g3d.util import Util
 from io_scene_g3d.domain_classes import G3DModel
 from io_scene_g3d.g3dj_json_encoder import G3DJsonEncoder
 from io_scene_g3d.profile import profile
@@ -59,7 +60,7 @@ class G3DBaseWriter(object):
                 meshSection["vertices"] = []
                 for vertex in mesh.vertices:
                     for attr in vertex.attributes:
-                        meshSection["vertices"].extend(attr.value)
+                        meshSection["vertices"].extend(Util.limitFloatListPrecision(None, attr.value))
 
                 meshSection["parts"] = []
                 for part in mesh.parts:
@@ -193,13 +194,13 @@ class G3DBaseWriter(object):
         nodeSection["id"] = parent.id
 
         if parent.translation is not None:
-            nodeSection["translation"] = parent.translation
+            nodeSection["translation"] = Util.limitFloatListPrecision(None, parent.translation)
 
         if parent.rotation is not None:
-            nodeSection["rotation"] = parent.rotation
+            nodeSection["rotation"] = Util.limitFloatListPrecision(None, parent.rotation)
 
         if parent.scale is not None:
-            nodeSection["scale"] = parent.scale
+            nodeSection["scale"] = Util.limitFloatListPrecision(None, parent.scale)
 
         if parent.parts is not None:
             nodeSection["parts"] = []
@@ -224,13 +225,13 @@ class G3DBaseWriter(object):
                         boneSection["node"] = bone.node
 
                         if bone.rotation is not None:
-                            boneSection["rotation"] = bone.rotation
+                            boneSection["rotation"] = Util.limitFloatListPrecision(None, bone.rotation)
 
                         if bone.translation is not None:
-                            boneSection["translation"] = bone.translation
+                            boneSection["translation"] = Util.limitFloatListPrecision(None, bone.translation)
 
                         if bone.scale is not None:
-                            boneSection["scale"] = bone.scale
+                            boneSection["scale"] = Util.limitFloatListPrecision(None, bone.scale)
 
                         nodePartSection["bones"].append(boneSection)
 
@@ -268,7 +269,7 @@ class G3DBWriter(G3DBaseWriter):
 
     def export(self, g3dModel, filepath):
         baseModel = self.mountJsonOutput(g3dModel)
-
+        
         output_file = open(filepath, 'wb')
         outputdata = simpleubjson.encode(data=baseModel)
         output_file.write(outputdata)

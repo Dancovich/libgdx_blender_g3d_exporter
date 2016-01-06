@@ -23,10 +23,10 @@ import com.badlogic.gdx.utils.JsonReader;
 public class ExportedModelLoader extends ApplicationAdapter {
 
     // G3DJ Model
-    public static final String MODEL_PATH = "data/soldier.g3dj";
+    //public static final String MODEL_PATH = "data/soldier.g3dj";
 
     // G3DB Model
-    //public static final String MODEL_PATH = "data/soldier.g3db";
+    public static final String MODEL_PATH = "data/soldier.g3db";
 
 	public Environment environment;
 	public PerspectiveCamera cam;

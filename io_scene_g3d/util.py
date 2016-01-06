@@ -43,6 +43,16 @@ class Util(object):
 
     def floatToString(self, floatNumber):
         return ROUND_STRING % floatNumber
+    
+    def limitFloatPrecision(self, floatNumber):
+        return float( ROUND_STRING % floatNumber )
+    
+    def limitFloatListPrecision(self, listOfFloats):
+        newList = [None] * len(listOfFloats)
+        for i in range(0, len(listOfFloats)):
+            newList[i] = float( ROUND_STRING % listOfFloats[i] )
+            
+        return newList
 
     # ## DEBUG METHODS ###
 

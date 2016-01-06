@@ -1,5 +1,3 @@
-# <pep8 compliant>
-
 #################################################################################
 # Copyright 2014 See AUTHORS file.
 #
@@ -15,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #################################################################################
+
+# <pep8 compliant>
 
 # Global rounding factor for floats
 FLOAT_ROUND = 6
@@ -43,15 +43,15 @@ class Util(object):
 
     def floatToString(self, floatNumber):
         return ROUND_STRING % floatNumber
-    
+
     def limitFloatPrecision(self, floatNumber):
-        return float( ROUND_STRING % floatNumber )
-    
+        return float(round(floatNumber, FLOAT_ROUND))
+
     def limitFloatListPrecision(self, listOfFloats):
         newList = [None] * len(listOfFloats)
         for i in range(0, len(listOfFloats)):
-            newList[i] = float( ROUND_STRING % listOfFloats[i] )
-            
+            newList[i] = float(round(listOfFloats[i], FLOAT_ROUND))
+
         return newList
 
     # ## DEBUG METHODS ###

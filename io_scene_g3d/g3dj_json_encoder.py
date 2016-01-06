@@ -1,5 +1,3 @@
-# <pep8 compliant>
-
 #################################################################################
 # Copyright 2014 See AUTHORS file.
 #
@@ -15,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #################################################################################
+
+# <pep8 compliant>
 
 import json
 from json.encoder import encode_basestring_ascii, encode_basestring, FLOAT_REPR, INFINITY

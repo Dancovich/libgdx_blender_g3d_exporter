@@ -20,11 +20,11 @@ import com.badlogic.gdx.math.Vector3;
 public class ExportedModelLoader extends ApplicationAdapter {
 
     // G3DJ Model
-    //public static final String SOLDIER_MODEL_PATH = "data/soldier.g3dj";
+    public static final String SOLDIER_MODEL_PATH = "data/soldier.g3dj";
     public static final String BOX_MODEL_PATH = "data/box.g3dj";
 
     // G3DB Model
-    public static final String SOLDIER_MODEL_PATH = "data/soldier.g3db";
+    //public static final String SOLDIER_MODEL_PATH = "data/soldier.g3db";
     //public static final String BOX_MODEL_PATH = "data/box.g3db";
 
 	public Environment environment;

@@ -408,7 +408,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             atLeastOneMaterial = False
             if currentMesh is not None and len(currentMesh.materials) > 0:
                 for blMaterial in currentMesh.materials:
-                    if blMaterial is None:
+                    if blMaterial is None or blMaterial.type != 'SURFACE':
                         continue
 
                     currentMaterial = Material()
@@ -416,25 +416,40 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     currentMaterial.id = blMaterial.name
 
                     Util.debug(None, "Exporting material %s" % blMaterial.name)
+                    
+                    # We select some optional arguments that depend on the shading algorithm
+                    specularType = "Phong"
+                    if blMaterial.specular_shader not in {'COOKTORR', 'PHONG', 'BLINN'}:
+                        specularType = "Lambert"
 
-                    currentMaterial.ambient = [blMaterial.ambient, blMaterial.ambient, blMaterial.ambient, 1.0]
+                    # Ambient color is taken from world
+                    ambientColor = [0.0, 0.0, 0.0]
+                    if context is not None and context.scene is not None and context.scene.world is not None:
+                        worldAmbientColor = context.scene.world.ambient_color
+                        if worldAmbientColor is not None and len(worldAmbientColor) >= 3:
+                            ambientColor = list( worldAmbientColor )
+                    currentMaterial.ambient = ambientColor
                     Util.debug(None, "    Ambient: %r" % currentMaterial.ambient)
 
                     currentMaterial.diffuse = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
                     Util.debug(None, "    Diffuse: %r" % currentMaterial.diffuse)
 
-                    currentMaterial.specular = [blMaterial.specular_color[0] * blMaterial.specular_intensity, blMaterial.specular_color[1] * blMaterial.specular_intensity, blMaterial.specular_color[2] * blMaterial.specular_intensity, blMaterial.specular_alpha]
+                    currentMaterial.specular = [blMaterial.specular_color[0], blMaterial.specular_color[1], blMaterial.specular_color[2], blMaterial.specular_alpha]
                     Util.debug(None, "    Specular: %r" % currentMaterial.specular)
 
-                    currentMaterial.emissive = [blMaterial.emit, blMaterial.emit, blMaterial.emit]
+                    currentMaterial.emissive = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
                     Util.debug(None, "    Emissive: %r" % currentMaterial.emissive)
 
-                    currentMaterial.shininess = blMaterial.specular_hardness
+                    # This is taken from Blender's FBX exporter, LibGDX fbx-conv tool seems to take from same place.
+                    if specularType == "Phong":
+                        currentMaterial.shininess = (blMaterial.specular_hardness - 1.0) / 5.10
+                    else:
+                        # Assumes Blender default specular hardness of 50
+                        currentMaterial.shininess = 9.6
                     Util.debug(None, "    Shininess: %r" % currentMaterial.shininess)
 
-                    if blMaterial.raytrace_mirror.use:
-                        currentMaterial.reflection = [blMaterial.raytrace_mirror.reflect_factor, blMaterial.raytrace_mirror.reflect_factor, blMaterial.raytrace_mirror.reflect_factor]
-                        Util.debug(None, "    Reflection: %r" % currentMaterial.reflection)
+                    currentMaterial.reflection = list(blMaterial.mirror_color)
+                    Util.debug(None, "    Reflection: %r" % currentMaterial.reflection)
 
                     if blMaterial.use_transparency:
                         currentMaterial.opacity = blMaterial.alpha

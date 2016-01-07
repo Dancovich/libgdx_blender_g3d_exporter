@@ -190,10 +190,10 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 continue
 
             for blMaterialIndex in range(0, len(currentBlMesh.materials)):
-                
+
                 # Fills the part here
                 currentMeshPart = MeshPart(meshPartId=currentBlMeshName + "_part" + str(blMaterialIndex))
-                
+
                 # Here we get only vertex groups used in this part
                 vertexGroupsForMaterial = self.listPartVertexGroups(currentObjNode, currentBlMesh, blMaterialIndex)
 
@@ -367,6 +367,9 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                             currentVertex.normalizeBlendWeight()
                         ############
 
+                        # Sort vertex attributes to match default order for some devices
+                        currentVertex.sortAttributes()
+
                         # Adding vertex to global pool of vertices. If vertex is already added
                         # (it is shared by another polygon and has no different attributes) then the
                         # already added vertex is returned instead.
@@ -416,7 +419,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     currentMaterial.id = blMaterial.name
 
                     Util.debug(None, "Exporting material %s" % blMaterial.name)
-                    
+
                     # We select some optional arguments that depend on the shading algorithm
                     specularType = "Phong"
                     if blMaterial.specular_shader not in {'COOKTORR', 'PHONG', 'BLINN'}:
@@ -427,7 +430,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     if context is not None and context.scene is not None and context.scene.world is not None:
                         worldAmbientColor = context.scene.world.ambient_color
                         if worldAmbientColor is not None and len(worldAmbientColor) >= 3:
-                            ambientColor = list( worldAmbientColor )
+                            ambientColor = list(worldAmbientColor)
                     currentMaterial.ambient = ambientColor
                     Util.debug(None, "    Ambient: %r" % currentMaterial.ambient)
 
@@ -877,7 +880,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         Lists all vertex groups associated with polys shaded with certain material.
         """
         vertexGroups = []
-        
+
         for vertexGroupIndex in range(0, len(blObject.vertex_groups)):
             vertexGroup = blObject.vertex_groups[vertexGroupIndex]
             groupIsInPart = False
@@ -898,7 +901,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                             break
                     except:
                         pass
-            
+
                 if groupIsInPart:
                     break
 

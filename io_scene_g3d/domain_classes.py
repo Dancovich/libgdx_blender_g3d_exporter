@@ -20,6 +20,7 @@
 
 import math
 
+from io_scene_g3d import util
 from io_scene_g3d.util import Util, ROUND_STRING
 
 
@@ -66,6 +67,10 @@ class Vertex(object):
                 if attr.name.startswith(VertexAttribute.BLENDWEIGHT, 0, len(VertexAttribute.BLENDWEIGHT)):
                     attr.value[1] = attr.value[1] / blendWeightSum
 
+    def sortAttributes(self):
+        if self._attributes is not None:
+            self._attributes.sort(key=util.attributeSort)
+
     def compare(self, another):
         if another is None or not isinstance(another, Vertex):
             raise TypeError("'another' must be a Vertex")
@@ -76,45 +81,15 @@ class Vertex(object):
         sameAmountOfAttributes = (numMyAttributes == numOtherAttributes)
         numEqualAttributeValues = 0
 
-        # HACK Blender generates weird tangent and binormal vectors, usually different
-        # even when a vertex is shared by two perfectly aligned polygons. For that reason
-        # we'll just use the tangent and binormal comparisons if the normals are also different
-        normalIsEqual = False
-        tangentIsEqual = False
-        binormalIsEqual = False
-        hasTangent = False
-        hasBinormal = False
-
         if sameAmountOfAttributes:
-            for attr in self._attributes:
-                if attr.name == VertexAttribute.TANGENT:
-                    hasTangent = True
+            for position in range(0, numMyAttributes):
+                myAttr = self._attributes[position]
+                otherAttr = another._attributes[position]
 
-                if attr.name == VertexAttribute.BINORMAL:
-                    hasBinormal = True
-
-                for attr2 in another._attributes:
-                    if attr.compare(attr2):
-                        numEqualAttributeValues = numEqualAttributeValues + 1
-
-                        if attr.name == VertexAttribute.TANGENT:
-                            tangentIsEqual = True
-                        if attr.name == VertexAttribute.BINORMAL:
-                            binormalIsEqual = True
-                        if attr.name == VertexAttribute.NORMAL:
-                            normalIsEqual = True
-
-            # Applying the above hack here
-            if normalIsEqual:
-                bonusEqualAttributes = 0
-
-                if not tangentIsEqual and hasTangent:
-                    bonusEqualAttributes = bonusEqualAttributes + 1
-                if not binormalIsEqual and hasBinormal:
-                    bonusEqualAttributes = bonusEqualAttributes + 1
-
-                if numEqualAttributeValues + bonusEqualAttributes == numMyAttributes:
-                    numEqualAttributeValues = numEqualAttributeValues + bonusEqualAttributes
+                if myAttr.compare(otherAttr):
+                    numEqualAttributeValues = numEqualAttributeValues + 1
+                else:
+                    break
 
         return sameAmountOfAttributes and (numEqualAttributeValues == numMyAttributes)
 

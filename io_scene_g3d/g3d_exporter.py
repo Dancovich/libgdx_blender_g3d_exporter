@@ -58,9 +58,9 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
     )
 
     exportArmature = BoolProperty(
-        name="Export Armature",
+        name="Export Armatures",
         description="Export armature nodes (bones)",
-        default=False
+        default=True
     )
 
     bonesPerVertex = IntProperty(
@@ -73,7 +73,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
     exportAnimation = BoolProperty(
         name="Export Actions as Animations",
         description="Export bone actions as animations",
-        default=False,
+        default=True,
     )
 
     generateTangentBinormal = BoolProperty(

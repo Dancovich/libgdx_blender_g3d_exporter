@@ -128,12 +128,12 @@ class Vertex(object):
         for attr in self._attributes:
             if firstTime:
                 firstTime = False
-                reprStr = reprStr + "    "
+                # reprStr = reprStr + "    "
             else:
                 reprStr = reprStr + ", "
-            reprStr = reprStr + ("%s [%r]" % (attr.name, attr.value))
+            reprStr = reprStr + ("{!s} [{!r}]".format(attr.name, attr.value))
 
-        reprStr = reprStr + ("}\n")
+        reprStr = reprStr + ("}")
 
         return reprStr
 
@@ -197,8 +197,8 @@ class VertexAttribute(object):
                 hashString = self.ATTRIBUTE_HASH % (self._name, Util.floatToString(self._value))
             else:
                 hashString = self.ATTRIBUTE_HASH % (self._name, self._value)
-            for char in hashString:
-                self._hashCache = 31 * self._hashCache + ord(char)
+            self._hashCache = hash(hashString)
+
         return self._hashCache
 
     @profile('eqVertexAttribute')
@@ -214,14 +214,14 @@ class VertexAttribute(object):
             if len(self.value) == len(another.value):
                 isEqual = True
                 for pos in range(0, len(self.value)):
-                    thisValue = ROUND_STRING % self.value[pos]
-                    otherValue = ROUND_STRING % another.value[pos]
+                    thisValue = ROUND_STRING.format(self.value[pos])
+                    otherValue = ROUND_STRING.format(another.value[pos])
 
                     if thisValue != otherValue:
                         # handles cases where 0 and -0 are different when compared as strings
                         if math.fabs(self.value[pos]) - math.fabs(another.value[pos]) == math.fabs(self.value[pos]):
-                            compareThisForZero = ROUND_STRING % math.fabs(self.value[pos])
-                            compareOtherForZero = ROUND_STRING % math.fabs(another.value[pos])
+                            compareThisForZero = ROUND_STRING.format(math.fabs(self.value[pos]))
+                            compareOtherForZero = ROUND_STRING.format(math.fabs(another.value[pos]))
 
                             if compareThisForZero != compareOtherForZero:
                                 isEqual = False
@@ -240,7 +240,7 @@ class VertexAttribute(object):
         return not self.__eq__(another)
 
     def __repr__(self):
-        value = "%s {%r}" % (self.name, self.value)
+        value = "{!s} {{{!r}}}".format(self.name, self.value)
         return value
 
 
@@ -488,6 +488,17 @@ class Mesh(object):
     def getAttributes(self):
         return self._attributes
 
+    def getVertexIndex(self, vertex):
+        if vertex is None or not isinstance(vertex, Vertex):
+            raise TypeError("'vertex' must be of type Vertex")
+
+        vertexHash = hash(vertex)
+        try:
+            existingVertexPos = self._vertexIndex[vertexHash]
+            return existingVertexPos
+        except KeyError:
+            return None
+
     def addVertex(self, vertex):
         """
         Adds a vertex if it has not been added before.
@@ -601,7 +612,7 @@ class Mesh(object):
                 vertex.add(newAttribute)
 
     def __repr__(self):
-        value = "VERTICES:\n%r\n\nPARTS:\n%r\n\n" % (self._vertices, self._parts)
+        value = "VERTICES:\n{!r}\n\nPARTS:\n{!r}\n\n".format(self._vertices, self._parts)
         return value
 
 
@@ -663,35 +674,14 @@ class MeshPart(object):
         return self._vertices
 
     def __repr__(self):
-        reprStr = "{\n    ID: %s\n    TYPE: %s\n" % (self.id, self.type)
+        reprStr = "{{\n    ID: {!s}\n    TYPE: {!s}\n".format(self.id, self.type)
 
         if self.parentMesh is not None and self._vertices is not None:
-            reprStr = reprStr + ("    INDICES (total of %d): [" % len(self._vertices))
-
-            firstTime = True
+            reprStr = reprStr + ("    TOTAL INDICES: {:d}\n    VERTICES:\n    [".format(len(self._vertices)))
             for ver in self._vertices:
-                index = -1
-                try:
-                    index = self.parentMesh.vertices.index(ver)
-                except:
-                    Util.warn("Vertex [%r] (obj id: %d) in part %s is not in mesh vertex list" % (ver, id(ver), self._id))
-                    Util.warn("All mesh vertices below:")
-
-                    for meshVer in self.parentMesh.vertices:
-                        Util.warn("   Found vertex with obj id %d in mesh" % id(meshVer))
-
-                    index = -1
-
-                if firstTime:
-                    reprStr = reprStr + " "
-                    firstTime = False
-                else:
-                    reprStr = reprStr + ", "
-                reprStr = reprStr + ("%d" % index)
-
-            reprStr = reprStr + " ]\n"
-
-        reprStr = reprStr + "}\n"
+                reprStr = reprStr + ("        {!r}\n".format(ver))
+            reprStr = reprStr + "    ]\n"
+        reprStr = reprStr + "}}\n"
 
         return reprStr
 

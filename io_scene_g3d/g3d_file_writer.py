@@ -75,7 +75,7 @@ class G3DBaseWriter(object):
 
                     if part.vertices is not None:
                         for vertex in part.vertices:
-                            vertexIndex = mesh.vertices.index(vertex)
+                            vertexIndex = mesh.getVertexIndex(vertex)
                             partSection["indices"].append(vertexIndex)
 
                     meshSection["parts"].append(partSection)

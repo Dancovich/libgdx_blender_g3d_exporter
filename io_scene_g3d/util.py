@@ -20,14 +20,16 @@ from math import fabs
 
 # Global rounding factor for floats
 FLOAT_ROUND = 6
-ROUND_STRING = "%" + str(FLOAT_ROUND + 3) + "." + str(FLOAT_ROUND) + "f"
+ROUND_STRING = "{:" + str(FLOAT_ROUND + 3) + "." + str(FLOAT_ROUND) + "f}"
 
-_DEBUG_ = 3
+_DEBUG_ = 4
+_INFO_ = 3
 _WARN_ = 2
 _ERROR_ = 1
 
-LOG_LEVEL = _ERROR_
+# LOG_LEVEL = _ERROR_
 # LOG_LEVEL = _WARN_
+LOG_LEVEL = _INFO_
 # LOG_LEVEL = _DEBUG_
 
 # Sorts vertex attributes
@@ -68,31 +70,31 @@ class Util(object):
 
     @staticmethod
     def compareVector(v1, v2):
-        a1 = [ROUND_STRING % v1[0], ROUND_STRING % v1[1], ROUND_STRING % v1[2]]
-        a2 = [ROUND_STRING % v2[0], ROUND_STRING % v2[1], ROUND_STRING % v2[2]]
+        a1 = [ROUND_STRING.format(v1[0]), ROUND_STRING.format(v1[1]), ROUND_STRING.format(v1[2])]
+        a2 = [ROUND_STRING.format(v2[0]), ROUND_STRING.format(v2[1]), ROUND_STRING.format(v2[2])]
         return a1 == a2
 
     @staticmethod
     def compareQuaternion(q1, q2):
-        a1 = [ROUND_STRING % q1[0], ROUND_STRING % q1[1], ROUND_STRING % q1[2], ROUND_STRING % q1[3]]
-        a2 = [ROUND_STRING % q2[0], ROUND_STRING % q2[1], ROUND_STRING % q2[2], ROUND_STRING % q2[3]]
+        a1 = [ROUND_STRING.format(q1[0]), ROUND_STRING.format(q1[1]), ROUND_STRING.format(q1[2]), ROUND_STRING.format(q1[3])]
+        a2 = [ROUND_STRING.format(q2[0]), ROUND_STRING.format(q2[1]), ROUND_STRING.format(q2[2]), ROUND_STRING.format(q2[3])]
         return a1 == a2
 
     @staticmethod
     def floatToString(floatNumber):
         if round(floatNumber, FLOAT_ROUND) != 0.0:
-            return ROUND_STRING % floatNumber
+            return ROUND_STRING.format(floatNumber)
         else:
-            return ROUND_STRING % fabs(floatNumber)
-    
+            return ROUND_STRING.format(fabs(floatNumber))
+
     @staticmethod
     def floatListToString(floatList):
         if floatList is None:
             return None
-        
+
         newList = [None] * len(floatList)
         for i in range(0, len(floatList)):
-            newList[i] = ROUND_STRING % floatList[i]
+            newList[i] = ROUND_STRING.format(floatList[i])
         return newList
 
     @staticmethod
@@ -108,18 +110,26 @@ class Util(object):
         return newList
 
     # ## DEBUG METHODS ###
-
     @staticmethod
-    def debug(message):
+    def debug(message, *args):
         if LOG_LEVEL >= _DEBUG_:
-            print("[DEBUG] %s" % message)
+            finalMessage = message.format(*args)
+            print("[DEBUG] {!s}".format(finalMessage))
 
     @staticmethod
-    def warn(message):
+    def info(message, *args):
+        if LOG_LEVEL >= _INFO_:
+            finalMessage = message.format(*args)
+            print("[INFO] {!s}".format(finalMessage))
+
+    @staticmethod
+    def warn(message, *args):
         if LOG_LEVEL >= _WARN_:
-            print("[WARN] %s" % message)
+            finalMessage = message.format(*args)
+            print("[WARN] {!s}".format(finalMessage))
 
     @staticmethod
-    def error(message):
+    def error(message, *args):
         if LOG_LEVEL >= _ERROR_:
-            print("[ERROR] %s" % message)
+            finalMessage = message.format(*args)
+            print("[ERROR] {!s}".format(finalMessage))

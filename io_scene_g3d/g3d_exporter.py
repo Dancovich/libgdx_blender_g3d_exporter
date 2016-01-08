@@ -148,20 +148,22 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             exporter = g3d_file_writer.G3DBWriter()
 
         if exporter is not None:
+            Util.info("Writing output file")
             exporter.export(self.g3dModel, self.filepath)
 
         # Clean up after export
         self.g3dModel = None
 
-        # if util.LOG_LEVEL == util._DEBUG_:
-        print_stats()
+        if util.LOG_LEVEL >= util._DEBUG_:
+            print_stats()
 
+        Util.info("Finished")
         return result
 
     @profile('generateMeshes')
     def generateMeshes(self, context):
         """Reads all MESH type objects and exported the selected ones (or all if 'only selected' isn't checked"""
-
+        Util.info("Exporting meshes")
         generatedMeshes = []
 
         for currentObjNode in bpy.data.objects:
@@ -170,10 +172,8 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
             # If we already processed the mesh data associated with this object, continue (ex: multiple objects pointing to same mesh data)
             if self.g3dModel.hasMesh(currentObjNode.data.name):
-                Util.debug("Skipping mesh for node %s (already exported from another node)" % currentObjNode.name)
+                Util.debug("Mesh '{!s}' already exported from another object", currentObjNode.data.name)
                 continue
-
-            Util.debug("Writing mesh from node %s" % currentObjNode.name)
 
             # This is the mesh object we are generating
             generatedMesh = Mesh()
@@ -194,6 +194,10 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 continue
 
             for blMaterialIndex in range(0, len(currentBlMesh.materials)):
+                if currentBlMesh.materials[blMaterialIndex].type != 'SURFACE':
+                    Util.debug("Ignoring mesh part for material '{!s}', type is not SURFACE (is {!s})", currentBlMesh.materials[blMaterialIndex].name, currentBlMesh.materials[blMaterialIndex].type)
+                else:
+                    Util.debug("Processing mesh part for material '{!s}'", currentBlMesh.materials[blMaterialIndex].name)
 
                 # Fills the part here
                 currentMeshPart = MeshPart(meshPartId=currentBlMeshName + "_part" + str(blMaterialIndex))
@@ -202,29 +206,21 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 vertexGroupsForMaterial = self.listPartVertexGroups(currentObjNode, currentBlMesh, blMaterialIndex)
 
                 for poly in currentBlMesh.polygons:
-                    Util.debug("  Processing material index %d" % blMaterialIndex)
                     if (poly.material_index != blMaterialIndex):
-                        Util.debug("  Skipping polygon associated with another material (current index:%d, poly index: %d)" % (blMaterialIndex, poly.material_index))
+
                         continue
 
-                    Util.debug("Polygon index: %d, length: %d, material id: %d" % (poly.index, poly.loop_total, poly.material_index))
                     for loopIndex in poly.loop_indices:
                         blLoop = currentBlMesh.loops[loopIndex]
                         blVertex = currentBlMesh.vertices[blLoop.vertex_index]
                         currentVertex = Vertex()
-
-                        Util.debug("    Reading vertex")
-                        Util.debug("    Vertex Index: %d" % currentBlMesh.loops[loopIndex].vertex_index)
-                        Util.debug("    Vertex Coord: %r" % blVertex.co)
-                        Util.debug("    Normal: %r" % blVertex.normal)
-                        Util.debug("    Split Normal: %r" % currentBlMesh.loops[loopIndex].normal)
 
                         ############
                         # Vertex position is the minimal attribute
                         attribute = VertexAttribute(VertexAttribute.POSITION,
                                                     self.convertVectorCoordinate(blVertex.co))
                         if not currentVertex.add(attribute):
-                            Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                            Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
                         ############
 
                         ############
@@ -249,14 +245,14 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                                 attribute = VertexAttribute(name=VertexAttribute.TANGENT, value=self.convertVectorCoordinate(tangent))
 
                                 if not currentVertex.add(attribute):
-                                    Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                                    Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
 
                                 binormal = [None] * 3
                                 binormal[0], binormal[1], binormal[2] = blLoop.bitangent
                                 attribute = VertexAttribute(name=VertexAttribute.BINORMAL, value=self.convertVectorCoordinate(binormal))
 
                                 if not currentVertex.add(attribute):
-                                    Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                                    Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
 
                                 splitNormalValue = [None] * 3
                                 splitNormalValue[0], splitNormalValue[1], splitNormalValue[2] = blLoop.normal
@@ -270,17 +266,17 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         # or per-vertex normals (gouraud shading) here.
                         attribute = VertexAttribute(name=VertexAttribute.NORMAL)
                         if doneCalculatingTangentBinormal and splitNormalValue is not None:
-                            Util.debug("    Using split normals: True")
+
                             attribute.value = self.convertVectorCoordinate(splitNormalValue)
                         elif poly.use_smooth:
-                            Util.debug("    Uses smooth shading: True")
+
                             attribute.value = self.convertVectorCoordinate(blVertex.normal)
                         else:
-                            Util.debug("    Uses smooth shading: False")
+
                             attribute.value = self.convertVectorCoordinate(poly.normal)
 
                         if not currentVertex.add(attribute):
-                            Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                            Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
                         ############
 
                         ############
@@ -293,7 +289,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                             attribute = VertexAttribute(name=VertexAttribute.COLOR, value=color)
 
                             if not currentVertex.add(attribute):
-                                Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                                Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
 
                         ############
 
@@ -311,14 +307,13 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                                 texCoordCount = texCoordCount + 1
 
                                 if not currentVertex.add(attribute):
-                                    Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                                    Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
                         ############
 
                         ############
                         # Exporting bone weights. We only export at most 'self.bonesPerVertex' bones
                         # for a single vertex.
                         if self.exportArmature:
-                            Util.debug("    Exporting blend weights for current vertex index %d" % blLoop.vertex_index)
 
                             zeroWeight = Util.floatToString(0.0)
                             blendWeightAttrName = VertexAttribute.BLENDWEIGHT + "%d"
@@ -338,33 +333,31 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                                     # Search for a bone with the same name as a vertex group
                                     bone = None
                                     try:
-                                        Util.debug("        Looking for bone with name %s" % vertexGroup.name)
+
                                         bone = armatureObj.data.bones[vertexGroup.name]
                                     except:
                                         bone = None
                                         pass
 
                                     if bone is not None:
-                                        Util.debug("        Found bone %s" % vertexGroup.name)
+
                                         boneIndex = boneIndex + 1
 
                                         try:
                                             # We get the weight associated with this vertex group. Zeros are ignored
                                             boneWeight = vertexGroup.weight(blLoop.vertex_index)
 
-                                            Util.debug("        Bone weight for vertex %d in group %s is %f" % (blLoop.vertex_index, vertexGroup.name, vertexGroup.weight(blLoop.vertex_index)))
-
                                             if Util.floatToString(boneWeight) != zeroWeight:
                                                 blendWeightValue = [float(boneIndex), boneWeight]
                                                 attribute = VertexAttribute((blendWeightAttrName % blendWeightIndex), blendWeightValue)
 
                                                 if not currentVertex.add(attribute):
-                                                    Util.warn("    Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
+                                                    Util.warn("Duplicate attribute found in vertex %d (%r), ignoring..." % (id(currentVertex), attribute))
                                                 else:
                                                     blendWeightIndex = blendWeightIndex + 1
 
-                                        except Exception as boneWeightException:
-                                            Util.warn("        Error trying to export bone weight for vertex index %d (%r)" % (blLoop.vertex_index, boneWeightException))
+                                        except Exception:
+                                            # Util.warn("Error trying to export bone weight for vertex index %d (%r)" % (blLoop.vertex_index, boneWeightException))
                                             pass
 
                             # In the end we normalize the bone weights
@@ -380,11 +373,11 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         currentVertex = generatedMesh.addVertex(currentVertex)
 
                         # Make this vertex part of this mesh part.
-                        Util.debug("Adding vertex (currentObjNode id %d) on material %d to mesh part (currentObjNode id %d)" % (id(currentVertex), blMaterialIndex, id(currentMeshPart)))
                         currentMeshPart.addVertex(currentVertex)
 
                 # Add current part to final mesh
                 generatedMesh.addPart(currentMeshPart)
+                Util.debug("\nFinished creating mesh part.\nMesh part data:\n###\n{!r}\n###", currentMeshPart)
 
             # Clean cloned mesh
             bpy.data.meshes.remove(currentBlMesh)
@@ -393,7 +386,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             generatedMesh.normalizeAttributes()
 
             # Add generated mesh to returned list
-            Util.debug("==== GENERATED MESH IS \n %s" % generatedMesh)
+
             generatedMeshes.append(generatedMesh)
 
         # Return list of all meshes
@@ -403,8 +396,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
     def generateMaterials(self, context):
         """Read and returns all materials used by the exported objects"""
         generatedMaterials = []
-
-        Util.debug("Generating materials")
+        Util.info("Exporting materials")
 
         for currentObjNode in bpy.data.objects:
             if currentObjNode.type != 'MESH' or (self.useSelection and not currentObjNode.select):
@@ -416,13 +408,12 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             if currentMesh is not None and len(currentMesh.materials) > 0:
                 for blMaterial in currentMesh.materials:
                     if blMaterial is None or blMaterial.type != 'SURFACE':
+                        Util.debug("Ignoring material '{!s}', type is not SURFACE ({!s})", blMaterial.name, blMaterial.type)
                         continue
 
+                    Util.debug("Exporting material '{!s}'", blMaterial.name)
                     currentMaterial = Material()
-
                     currentMaterial.id = blMaterial.name
-
-                    Util.debug("Exporting material %s" % blMaterial.name)
 
                     # We select some optional arguments that depend on the shading algorithm
                     specularType = "Phong"
@@ -436,47 +427,38 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         if worldAmbientColor is not None and len(worldAmbientColor) >= 3:
                             ambientColor = list(worldAmbientColor)
                     currentMaterial.ambient = ambientColor
-                    Util.debug("    Ambient: %r" % currentMaterial.ambient)
 
                     currentMaterial.diffuse = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
-                    Util.debug("    Diffuse: %r" % currentMaterial.diffuse)
 
                     currentMaterial.specular = [blMaterial.specular_color[0], blMaterial.specular_color[1], blMaterial.specular_color[2], blMaterial.specular_alpha]
-                    Util.debug("    Specular: %r" % currentMaterial.specular)
 
                     currentMaterial.emissive = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
-                    Util.debug("    Emissive: %r" % currentMaterial.emissive)
 
                     # This is taken from Blender's FBX exporter, LibGDX fbx-conv tool seems to take from same place.
                     if specularType == "Phong":
                         currentMaterial.shininess = (blMaterial.specular_hardness - 1.0) / 5.10
                     else:
                         # Assumes Blender default specular hardness of 50
-                        currentMaterial.shininess = 9.6
-                    Util.debug("    Shininess: %r" % currentMaterial.shininess)
+                        currentMaterial.shininess = 49.0 / 5.10
 
                     currentMaterial.reflection = list(blMaterial.mirror_color)
-                    Util.debug("    Reflection: %r" % currentMaterial.reflection)
 
                     if blMaterial.use_transparency:
                         currentMaterial.opacity = blMaterial.alpha
-                        Util.debug("    Opacity: %r" % currentMaterial.opacity)
 
                     if len(blMaterial.texture_slots) > 0:
-                        Util.debug("    Exporting textures for material %s" % blMaterial.name)
+
                         materialTextures = []
 
                         for slot in blMaterial.texture_slots:
                             currentTexture = Texture()
 
                             if slot is not None:
-                                Util.debug("    Found texture %s. Texture coords are %s, texture type is %s" % (slot.name, slot.texture_coords, slot.texture.type))
+                                Util.debug("Found texture {!s}. Texture coords are {!s}, texture type is {!s}", slot.name, slot.texture_coords, slot.texture.type)
 
                             if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
                                 if slot is not None:
-                                    Util.debug("    Texture type not supported, skipping")
-                                else:
-                                    Util.debug("    Texture slot is empty, skipping")
+                                    Util.warn("Texture type {!s} not supported, skipping", slot.texture.type)
                                 continue
 
                             currentTexture.id = slot.name
@@ -530,8 +512,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
     def generateNodes(self, context, parent=None, parentName=""):
         """Generates object nodes that attach mesh parts, materials and bones together"""
         generatedNodes = []
-
-        Util.debug("Generating nodes")
+        Util.info("Exporting nodes")
 
         listOfBlenderObjects = None
 
@@ -571,8 +552,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     if blNode.parent is not None:
                         continue
 
-            Util.debug("Exporting node %s" % blNode.name)
-
             currentNode = Node()
 
             if isinstance(blNode, bpy.types.Bone):
@@ -606,8 +585,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     transformMatrix = blNode.matrix_world
 
                 location, rotationQuaternion, scale = transformMatrix.decompose()
-                Util.debug("Node transform is %s" % str(transformMatrix))
-                Util.debug("Decomposed node transform is %s" % str(transformMatrix.decompose()))
+
             except:
                 Util.warn("Error decomposing transform for node %s" % blNode.name)
                 location = [0.0, 0.0, 0.0]
@@ -663,7 +641,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
                     # Start writing bones
                     if self.exportArmature and len(blNode.vertex_groups) > 0:
-                        Util.debug("Writing bones for node %s" % blNode.name)
 
                         # Getting only the vertex groups associated with this node part
                         vertexGroupsForMaterial = self.listPartVertexGroups(blNode, blNode.data, blMaterialIndex)
@@ -680,8 +657,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
                                     boneTransformMatrix = blNode.matrix_local.inverted() * bone.matrix_local
                                     boneLocation, boneQuaternion, boneScale = boneTransformMatrix.decompose()
-
-                                    Util.debug("Appending pose bone %s with transform %s" % (blVertexGroup.name, str(boneTransformMatrix)))
 
                                     if not self.testDefaultTransform(boneLocation):
                                         currentBone.translation = self.convertVectorCoordinate(boneLocation)
@@ -720,6 +695,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         # we can safely just save keyframes as LibGDX also uses linear interpolation
         """If selected by the user, generates keyframed animations for the bones"""
         generatedAnimations = []
+        Util.info("Exporting animations")
 
         # Save our time per currentFrameNumber (in miliseconds)
         fps = context.scene.render.fps
@@ -733,8 +709,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             for blAction in bpy.data.actions:
                 if blAction.users <= 0:
                     continue
-
-                Util.debug("Writing animation for action %s" % blAction.name)
 
                 currentAnimation = Animation()
                 currentAnimation.id = blAction.name
@@ -917,12 +891,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
         Destination axis is defined on 'self.vector3AxisMapper' and 'self.vector4AxisMapper' attributes.
         """
-
         newCo = [(co[self.vector3AxisMapper["x"]["coPos"]] * self.vector3AxisMapper["x"]["sign"]), (co[self.vector3AxisMapper["y"]["coPos"]] * self.vector3AxisMapper["y"]["sign"]), (co[self.vector3AxisMapper["z"]["coPos"]] * self.vector3AxisMapper["z"]["sign"])]
-
-        Util.debug("|=[Converting coordinates from [%s, %s, %s] to [%s, %s, %s]]=|"
-                   % (Util.floatToString(co[0]), Util.floatToString(co[1]), Util.floatToString(co[2]), Util.floatToString(newCo[0]), Util.floatToString(newCo[1]), Util.floatToString(newCo[2])))
-
         return newCo
 
     def convertQuaternionCoordinate(self, co):
@@ -931,14 +900,8 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
         Destination axis is defined on 'self.vector3AxisMapper' and 'self.vector4AxisMapper' attributes.
         """
-
-        newCo = [(co[self.vector4AxisMapper["x"]["coPos"]] * self.vector4AxisMapper["x"]["sign"]), (co[self.vector4AxisMapper["y"]["coPos"]] * self.vector4AxisMapper["y"]["sign"]),
-                 (co[self.vector4AxisMapper["z"]["coPos"]] * self.vector4AxisMapper["z"]["sign"]), (co[self.vector4AxisMapper["w"]["coPos"]] * self.vector4AxisMapper["w"]["sign"])]
-
-        Util.debug("|=[Converting quaternion from format [w, x, y, z] [%s, %s, %s, %s] to format [x, y, z, w] [%s, %s, %s, %s]]=|"
-                   % (Util.floatToString(co[0]), Util.floatToString(co[1]), Util.floatToString(co[2]), Util.floatToString(co[3]), Util.floatToString(newCo[0]), Util.floatToString(newCo[1]), Util.floatToString(newCo[2]), Util.floatToString(newCo[3])))
-
-        return newCo
+        return [(co[self.vector4AxisMapper["x"]["coPos"]] * self.vector4AxisMapper["x"]["sign"]), (co[self.vector4AxisMapper["y"]["coPos"]] * self.vector4AxisMapper["y"]["sign"]),
+                (co[self.vector4AxisMapper["z"]["coPos"]] * self.vector4AxisMapper["z"]["sign"]), (co[self.vector4AxisMapper["w"]["coPos"]] * self.vector4AxisMapper["w"]["sign"])]
 
     def convertScaleCoordinate(self, co):
         """
@@ -946,13 +909,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
         For scaling the range is 0.0 to 1.0 so we ignore sign and just adjust axis
         """
-
-        newCo = [co[self.vector3AxisMapper["x"]["coPos"]], co[self.vector3AxisMapper["y"]["coPos"]], co[self.vector3AxisMapper["z"]["coPos"]]]
-
-        Util.debug("|=[Converting scaling coordinates from [%s, %s, %s] to [%s, %s, %s]]=|"
-                   % (Util.floatToString(co[0]), Util.floatToString(co[1]), Util.floatToString(co[2]), Util.floatToString(newCo[0]), Util.floatToString(newCo[1]), Util.floatToString(newCo[2])))
-
-        return newCo
+        return [co[self.vector3AxisMapper["x"]["coPos"]], co[self.vector3AxisMapper["y"]["coPos"]], co[self.vector3AxisMapper["z"]["coPos"]]]
 
     def getTransformFromBone(self, bone):
         """Create a transform matrix based on the relative rest position of a bone"""
@@ -1054,10 +1011,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
         matrix = (rotationMatrix * scaleMatrix) + translationMatrix
 
-        Util.debug("Creating matrix from location, rotation and scale")
-        Util.debug("INPUT: Location = %s; Quaternion = %s; Scale = %s" % (str(locationVector), str(quat), str(scaleVector)))
-        Util.debug("OUTPUT: %s" % str(matrix))
-
         return matrix
 
     def compareVector(self, v1, v2):
@@ -1087,7 +1040,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             and transform[2] == 0.0
 
     def setupAxisConversion(self, axisForward, axisUp):
-        Util.debug("Converting axis using forward as '%s' and up as '%s'" % (axisForward, axisUp))
 
         self.vector3AxisMapper["x"] = {}
         self.vector3AxisMapper["y"] = {}
@@ -1235,9 +1187,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 self.vector4AxisMapper["y"]["coPos"] = 1
                 self.vector3AxisMapper["y"]["sign"] = 1.0
                 self.vector4AxisMapper["y"]["sign"] = 1.0
-
-        Util.debug("Axis conversion configuration for vectors is {%r}" % self.vector3AxisMapper)
-        Util.debug("Axis conversion configuration for quaternions is {%r}" % self.vector4AxisMapper)
 
 
 class G3DBExporterOperator(bpy.types.Operator, G3DBaseExporterOperator):

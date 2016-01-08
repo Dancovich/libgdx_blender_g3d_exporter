@@ -22,12 +22,15 @@ import math
 
 from io_scene_g3d import util
 from io_scene_g3d.util import Util, ROUND_STRING
+from io_scene_g3d.profile import profile
 
 
 class Vertex(object):
     """Define a mesh vertex"""
 
     _attributes = []
+
+    _hashCache = None
 
     def __init__(self):
         self.attributes = []
@@ -36,15 +39,18 @@ class Vertex(object):
         if attribute is None or not isinstance(attribute, VertexAttribute):
             raise TypeError("'attribute' must be a VertexAttribute")
 
-        alreadyAdded = False
+        alreadyAdded = attribute in self._attributes
+        """
         for attr in self._attributes:
             if attr == attribute:
                 alreadyAdded = True
                 break
+        """
 
         if not alreadyAdded:
             self._attributes.append(attribute)
 
+        self._hashCache = None
         return not alreadyAdded
 
     @property
@@ -54,6 +60,7 @@ class Vertex(object):
     @attributes.setter
     def attributes(self, newAttributes):
         self._attributes = newAttributes
+        self._hashCache = None
 
     def normalizeBlendWeight(self):
         if self.attributes is not None:
@@ -67,11 +74,28 @@ class Vertex(object):
                 if attr.name.startswith(VertexAttribute.BLENDWEIGHT, 0, len(VertexAttribute.BLENDWEIGHT)):
                     attr.value[1] = attr.value[1] / blendWeightSum
 
+            self._hashCache = None
+
     def sortAttributes(self):
         if self._attributes is not None:
             self._attributes.sort(key=util.attributeSort)
 
+    @profile('hashVertex')
+    def __hash__(self):
+        if self._hashCache is None or self._hashCache == 0:
+            self._hashCache = 0
+            if self._attributes is not None:
+                for attr in self._attributes:
+                    self._hashCache = 31 * self._hashCache + hash(attr)
+        return self._hashCache
+
+    @profile('eqVertex')
     def __eq__(self, another):
+        if another is None or not isinstance(another, Vertex):
+            raise TypeError("'another' must be a Vertex")
+        return hash(self) == hash(another)
+
+        """
         if another is None or not isinstance(another, Vertex):
             raise TypeError("'another' must be a Vertex")
 
@@ -92,6 +116,7 @@ class Vertex(object):
                     break
 
         return sameAmountOfAttributes and (numEqualAttributeValues == numMyAttributes)
+        """
 
     def __ne__(self, another):
         return not self.__eq__(another)
@@ -134,9 +159,14 @@ class VertexAttribute(object):
     BLENDWEIGHT = "BLENDWEIGHT"
     ###
 
+    # Used to calculate attribute hash
+    ATTRIBUTE_HASH = "%s||%s"
+    _hashCache = None
+
     def __init__(self, name="POSITION", value=[0.0, 0.0, 0.0]):
         self.name = name
         self.value = value
+        self._hashCache = None
 
     @property
     def name(self):
@@ -145,6 +175,7 @@ class VertexAttribute(object):
     @name.setter
     def name(self, name):
         self._name = name
+        self._hashCache = None
 
     @property
     def value(self):
@@ -153,7 +184,24 @@ class VertexAttribute(object):
     @value.setter
     def value(self, value):
         self._value = value
+        self._hashCache = None
 
+    @profile('hashVertexAttribute')
+    def __hash__(self):
+        if self._hashCache is None or self._hashCache == 0:
+            self._hashCache = 0
+            hashString = None
+            if self._value is not None and isinstance(self._value, list):
+                hashString = self.ATTRIBUTE_HASH % (self._name, Util.floatListToString(self._value))
+            elif self._value is not None:
+                hashString = self.ATTRIBUTE_HASH % (self._name, Util.floatToString(self._value))
+            else:
+                hashString = self.ATTRIBUTE_HASH % (self._name, self._value)
+            for char in hashString:
+                self._hashCache = 31 * self._hashCache + ord(char)
+        return self._hashCache
+
+    @profile('eqVertexAttribute')
     def __eq__(self, another):
         """Compare this attribute with another for value"""
         if another is None or not isinstance(another, VertexAttribute):
@@ -415,11 +463,15 @@ class Mesh(object):
     # All the real attributes are in the vertices
     _attributes = None
 
+    # This stores positions of each vertex on the _vertices attribute, so searches are faster
+    _vertexIndex = None
+
     def __init__(self):
         self._id = ""
         self._vertices = []
         self._parts = []
         self._attributes = []
+        self._vertexIndex = {}
 
     @property
     def id(self):
@@ -449,6 +501,24 @@ class Mesh(object):
         if vertex is None or not isinstance(vertex, Vertex):
             raise TypeError("'vertex' must be of type Vertex")
 
+        vertexHash = hash(vertex)
+        try:
+            existingVertexPos = self._vertexIndex[vertexHash]
+            existingVertex = self._vertices[existingVertexPos]
+            return existingVertex
+        except KeyError:
+            self._vertices.append(vertex)
+            vertexIndex = len(self._vertices) - 1
+            self._vertexIndex[vertexHash] = vertexIndex
+
+            # Add this vertice's attributes to the attribute name cache
+            for attr in vertex.attributes:
+                if attr.name not in self._attributes:
+                    self._attributes.append(attr.name)
+
+            return vertex
+        """
+
         alreadyAdded = False
         foundVertex = None
 
@@ -469,6 +539,7 @@ class Mesh(object):
             return vertex
         else:
             return foundVertex
+        """
 
     @property
     def parts(self):
@@ -603,11 +674,11 @@ class MeshPart(object):
                 try:
                     index = self.parentMesh.vertices.index(ver)
                 except:
-                    Util.warn(None, "Vertex [%r] (obj id: %d) in part %s is not in mesh vertex list" % (ver, id(ver), self._id))
-                    Util.warn(None, "All mesh vertices below:")
+                    Util.warn("Vertex [%r] (obj id: %d) in part %s is not in mesh vertex list" % (ver, id(ver), self._id))
+                    Util.warn("All mesh vertices below:")
 
                     for meshVer in self.parentMesh.vertices:
-                        Util.warn(None, "   Found vertex with obj id %d in mesh" % id(meshVer))
+                        Util.warn("   Found vertex with obj id %d in mesh" % id(meshVer))
 
                     index = -1
 

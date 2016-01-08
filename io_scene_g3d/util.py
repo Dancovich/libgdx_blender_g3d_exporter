@@ -16,6 +16,8 @@
 
 # <pep8 compliant>
 
+from math import fabs
+
 # Global rounding factor for floats
 FLOAT_ROUND = 6
 ROUND_STRING = "%" + str(FLOAT_ROUND + 3) + "." + str(FLOAT_ROUND) + "f"
@@ -64,23 +66,41 @@ def attributeSort(attribute):
 
 class Util(object):
 
-    def compareVector(self, v1, v2):
+    @staticmethod
+    def compareVector(v1, v2):
         a1 = [ROUND_STRING % v1[0], ROUND_STRING % v1[1], ROUND_STRING % v1[2]]
         a2 = [ROUND_STRING % v2[0], ROUND_STRING % v2[1], ROUND_STRING % v2[2]]
         return a1 == a2
 
-    def compareQuaternion(self, q1, q2):
+    @staticmethod
+    def compareQuaternion(q1, q2):
         a1 = [ROUND_STRING % q1[0], ROUND_STRING % q1[1], ROUND_STRING % q1[2], ROUND_STRING % q1[3]]
         a2 = [ROUND_STRING % q2[0], ROUND_STRING % q2[1], ROUND_STRING % q2[2], ROUND_STRING % q2[3]]
         return a1 == a2
 
-    def floatToString(self, floatNumber):
-        return ROUND_STRING % floatNumber
+    @staticmethod
+    def floatToString(floatNumber):
+        if round(floatNumber, FLOAT_ROUND) != 0.0:
+            return ROUND_STRING % floatNumber
+        else:
+            return ROUND_STRING % fabs(floatNumber)
+    
+    @staticmethod
+    def floatListToString(floatList):
+        if floatList is None:
+            return None
+        
+        newList = [None] * len(floatList)
+        for i in range(0, len(floatList)):
+            newList[i] = ROUND_STRING % floatList[i]
+        return newList
 
-    def limitFloatPrecision(self, floatNumber):
+    @staticmethod
+    def limitFloatPrecision(floatNumber):
         return float(round(floatNumber, FLOAT_ROUND))
 
-    def limitFloatListPrecision(self, listOfFloats):
+    @staticmethod
+    def limitFloatListPrecision(listOfFloats):
         newList = [None] * len(listOfFloats)
         for i in range(0, len(listOfFloats)):
             newList[i] = float(round(listOfFloats[i], FLOAT_ROUND))
@@ -89,14 +109,17 @@ class Util(object):
 
     # ## DEBUG METHODS ###
 
-    def debug(self, message):
+    @staticmethod
+    def debug(message):
         if LOG_LEVEL >= _DEBUG_:
             print("[DEBUG] %s" % message)
 
-    def warn(self, message):
+    @staticmethod
+    def warn(message):
         if LOG_LEVEL >= _WARN_:
             print("[WARN] %s" % message)
 
-    def error(self, message):
+    @staticmethod
+    def error(message):
         if LOG_LEVEL >= _ERROR_:
             print("[ERROR] %s" % message)

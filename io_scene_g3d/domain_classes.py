@@ -38,7 +38,7 @@ class Vertex(object):
 
         alreadyAdded = False
         for attr in self._attributes:
-            if attr.compare(attribute):
+            if attr == attribute:
                 alreadyAdded = True
                 break
 
@@ -71,7 +71,7 @@ class Vertex(object):
         if self._attributes is not None:
             self._attributes.sort(key=util.attributeSort)
 
-    def compare(self, another):
+    def __eq__(self, another):
         if another is None or not isinstance(another, Vertex):
             raise TypeError("'another' must be a Vertex")
 
@@ -86,12 +86,15 @@ class Vertex(object):
                 myAttr = self._attributes[position]
                 otherAttr = another._attributes[position]
 
-                if myAttr.compare(otherAttr):
+                if myAttr == otherAttr:
                     numEqualAttributeValues = numEqualAttributeValues + 1
                 else:
                     break
 
         return sameAmountOfAttributes and (numEqualAttributeValues == numMyAttributes)
+
+    def __ne__(self, another):
+        return not self.__eq__(another)
 
     def __repr__(self):
         reprStr = "{"
@@ -151,7 +154,7 @@ class VertexAttribute(object):
     def value(self, value):
         self._value = value
 
-    def compare(self, another):
+    def __eq__(self, another):
         """Compare this attribute with another for value"""
         if another is None or not isinstance(another, VertexAttribute):
             return False
@@ -184,6 +187,9 @@ class VertexAttribute(object):
                 return False
         else:
             return self.value == another.value
+
+    def __ne__(self, another):
+        return not self.__eq__(another)
 
     def __repr__(self):
         value = "%s {%r}" % (self.name, self.value)
@@ -447,7 +453,7 @@ class Mesh(object):
         foundVertex = None
 
         for vtx in self._vertices:
-            if vtx.compare(vertex):
+            if vtx == vertex:
                 alreadyAdded = True
                 foundVertex = vtx
                 break

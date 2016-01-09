@@ -82,6 +82,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.1**
+  - Overall performance increase in export task.
+
 * **0.2.0**
   - Overall refactoring of the addon. New options should be easier to implement from now on.
   - The exporter now supports both text and binary G3D formats.

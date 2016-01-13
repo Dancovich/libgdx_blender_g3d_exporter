@@ -398,113 +398,130 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         generatedMaterials = []
         Util.info("Exporting materials")
 
-        for currentObjNode in bpy.data.objects:
-            if currentObjNode.type != 'MESH' or (self.useSelection and not currentObjNode.select):
-                continue
-
-            currentMesh = currentObjNode.data
-
+        if bpy.data.materials is not None and len(bpy.data.materials) > 0:
+            # We will set this to true if we manage to export at least one material
             atLeastOneMaterial = False
-            if currentMesh is not None and len(currentMesh.materials) > 0:
-                for blMaterial in currentMesh.materials:
-                    if blMaterial is None or blMaterial.type != 'SURFACE':
-                        Util.debug("Ignoring material '{!s}', type is not SURFACE ({!s})", blMaterial.name, blMaterial.type)
+
+            for blMaterial in bpy.data.materials:
+                if blMaterial is None or blMaterial.type != 'SURFACE':
+                    Util.debug("Ignoring material '{!s}', type is not SURFACE ({!s})", blMaterial.name, blMaterial.type)
+                    continue
+
+                # If none of the objects in the scene use the material we don't export it
+                materialIsUsed = False
+                for currentObjNode in bpy.data.objects:
+                    if currentObjNode.type != 'MESH' or (self.useSelection and not currentObjNode.select):
                         continue
 
-                    Util.debug("Exporting material '{!s}'", blMaterial.name)
-                    currentMaterial = Material()
-                    currentMaterial.id = blMaterial.name
+                    currentMesh = currentObjNode.data
+                    if currentMesh is not None and len(currentMesh.materials) > 0:
+                        for searchMaterial in currentMesh.materials:
+                            if searchMaterial.name == blMaterial.name:
+                                materialIsUsed = True
+                                break
 
-                    # We select some optional arguments that depend on the shading algorithm
-                    specularType = "Phong"
-                    if blMaterial.specular_shader not in {'COOKTORR', 'PHONG', 'BLINN'}:
-                        specularType = "Lambert"
+                    if materialIsUsed:
+                        break
 
-                    # Ambient color is taken from world
-                    ambientColor = [0.0, 0.0, 0.0]
-                    if context is not None and context.scene is not None and context.scene.world is not None:
-                        worldAmbientColor = context.scene.world.ambient_color
-                        if worldAmbientColor is not None and len(worldAmbientColor) >= 3:
-                            ambientColor = list(worldAmbientColor)
-                    currentMaterial.ambient = ambientColor
+                # We didn't find an object that uses this material. Ignoring
+                if not materialIsUsed:
+                    Util.debug("Ignoring unused material '{!s}'", blMaterial.name)
+                    continue
 
-                    currentMaterial.diffuse = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
+                Util.debug("Exporting material '{!s}'", blMaterial.name)
+                currentMaterial = Material()
+                currentMaterial.id = blMaterial.name
 
-                    currentMaterial.specular = [blMaterial.specular_color[0], blMaterial.specular_color[1], blMaterial.specular_color[2], blMaterial.specular_alpha]
+                # We select some optional arguments that depend on the shading algorithm
+                specularType = "Phong"
+                if blMaterial.specular_shader not in {'COOKTORR', 'PHONG', 'BLINN'}:
+                    specularType = "Lambert"
 
-                    currentMaterial.emissive = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
+                # Ambient color is taken from world
+                ambientColor = [0.0, 0.0, 0.0]
+                if context is not None and context.scene is not None and context.scene.world is not None:
+                    worldAmbientColor = context.scene.world.ambient_color
+                    if worldAmbientColor is not None and len(worldAmbientColor) >= 3:
+                        ambientColor = list(worldAmbientColor)
+                currentMaterial.ambient = ambientColor
 
-                    # This is taken from Blender's FBX exporter, LibGDX fbx-conv tool seems to take from same place.
-                    if specularType == "Phong":
-                        currentMaterial.shininess = (blMaterial.specular_hardness - 1.0) / 5.10
-                    else:
-                        # Assumes Blender default specular hardness of 50
-                        currentMaterial.shininess = 49.0 / 5.10
+                currentMaterial.diffuse = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
 
-                    currentMaterial.reflection = list(blMaterial.mirror_color)
+                currentMaterial.specular = [blMaterial.specular_color[0], blMaterial.specular_color[1], blMaterial.specular_color[2], blMaterial.specular_alpha]
 
-                    if blMaterial.use_transparency:
-                        currentMaterial.opacity = blMaterial.alpha
+                currentMaterial.emissive = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
 
-                    if len(blMaterial.texture_slots) > 0:
+                # This is taken from Blender's FBX exporter, LibGDX fbx-conv tool seems to take from same place.
+                if specularType == "Phong":
+                    currentMaterial.shininess = (blMaterial.specular_hardness - 1.0) / 5.10
+                else:
+                    # Assumes Blender default specular hardness of 50
+                    currentMaterial.shininess = 49.0 / 5.10
 
-                        materialTextures = []
+                currentMaterial.reflection = list(blMaterial.mirror_color)
 
-                        for slot in blMaterial.texture_slots:
-                            currentTexture = Texture()
+                if blMaterial.use_transparency:
+                    currentMaterial.opacity = blMaterial.alpha
 
+                if len(blMaterial.texture_slots) > 0:
+
+                    materialTextures = []
+
+                    for slot in blMaterial.texture_slots:
+                        currentTexture = Texture()
+
+                        if slot is not None:
+                            Util.debug("Found texture {!s}. Texture coords are {!s}, texture type is {!s}", slot.name, slot.texture_coords, slot.texture.type)
+
+                        if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
                             if slot is not None:
-                                Util.debug("Found texture {!s}. Texture coords are {!s}, texture type is {!s}", slot.name, slot.texture_coords, slot.texture.type)
+                                Util.warn("Texture type {!s} not supported, skipping", slot.texture.type)
+                            continue
 
-                            if (slot is None or slot.texture_coords != 'UV' or slot.texture.type != 'IMAGE' or slot.texture.__class__ is not bpy.types.ImageTexture):
-                                if slot is not None:
-                                    Util.warn("Texture type {!s} not supported, skipping", slot.texture.type)
-                                continue
+                        currentTexture.id = slot.name
+                        currentTexture.filename = (self.getCompatiblePath(slot.texture.image.filepath))
 
-                            currentTexture.id = slot.name
-                            currentTexture.filename = (self.getCompatiblePath(slot.texture.image.filepath))
+                        usageType = ""
 
-                            usageType = ""
+                        if slot.use_map_color_diffuse:
+                            usageType = "DIFFUSE"
+                        elif slot.use_map_normal and slot.texture.use_normal_map:
+                            usageType = "NORMAL"
+                        elif slot.use_map_normal and not slot.texture.use_normal_map:
+                            usageType = "BUMP"
+                        elif slot.use_map_ambient:
+                            usageType = "AMBIENT"
+                        elif slot.use_map_emit:
+                            usageType = "EMISSIVE"
+                        elif slot.use_map_diffuse:
+                            usageType = "REFLECTION"
+                        elif slot.use_map_alpha:
+                            usageType = "TRANSPARENCY"
+                        elif slot.use_map_color_spec:
+                            usageType = "SPECULAR"
+                        elif slot.use_map_specular:
+                            usageType = "SHININESS"
+                        else:
+                            usageType = "UNKNOWN"
 
-                            if slot.use_map_color_diffuse:
-                                usageType = "DIFFUSE"
-                            elif slot.use_map_normal and slot.texture.use_normal_map:
-                                usageType = "NORMAL"
-                            elif slot.use_map_normal and not slot.texture.use_normal_map:
-                                usageType = "BUMP"
-                            elif slot.use_map_ambient:
-                                usageType = "AMBIENT"
-                            elif slot.use_map_emit:
-                                usageType = "EMISSIVE"
-                            elif slot.use_map_diffuse:
-                                usageType = "REFLECTION"
-                            elif slot.use_map_alpha:
-                                usageType = "TRANSPARENCY"
-                            elif slot.use_map_color_spec:
-                                usageType = "SPECULAR"
-                            elif slot.use_map_specular:
-                                usageType = "SHININESS"
-                            else:
-                                usageType = "UNKNOWN"
+                        currentTexture.type = usageType
 
-                            currentTexture.type = usageType
+                        # Ending current texture
+                        materialTextures.append(currentTexture)
 
-                            # Ending current texture
-                            materialTextures.append(currentTexture)
+                    # Adding found textures to this material
+                    currentMaterial.textures = materialTextures
 
-                        # Adding found textures to this material
-                        currentMaterial.textures = materialTextures
+                # Adding this material to the full list
+                atLeastOneMaterial = True
+                generatedMaterials.append(currentMaterial)
 
-                    # Adding this material to the full list
-                    atLeastOneMaterial = True
-                    generatedMaterials.append(currentMaterial)
-
-                # If all materials where None (unassigned material slots) then we actually didn't export materials and
-                # we need to raise an exception
-                if not atLeastOneMaterial:
-                    raise RuntimeError("Can't export nodes without materials. Add at least one material to node '%s'." % currentObjNode.name)
-            else:
-                raise RuntimeError("Can't export nodes without materials. Add at least one material to node '%s'." % currentObjNode.name)
+            # If all materials where None (unassigned material slots) then we actually didn't export materials and
+            # we need to raise an exception
+            if not atLeastOneMaterial:
+                raise RuntimeError("Can't have a model without materials, use at least one material in your mesh objects.")
+        else:
+            raise RuntimeError("Can't have a model without materials, use at least one material in your mesh objects.")
 
         return generatedMaterials
 

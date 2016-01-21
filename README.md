@@ -82,6 +82,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.2**
+  - Fixed bug where using the same material on more than one mesh caused the exported to export the material multiple times.
+
 * **0.2.1**
   - Overall performance increase in export task.
 

@@ -31,6 +31,8 @@ class Vertex(object):
     _attributes = []
 
     _hashCache = None
+    
+    _listOfZeros = Util.floatListToString([0.0, 0.0])
 
     def __init__(self):
         self.attributes = []
@@ -86,7 +88,12 @@ class Vertex(object):
             self._hashCache = 0
             if self._attributes is not None:
                 for attr in self._attributes:
-                    self._hashCache = 31 * self._hashCache + hash(attr)
+                    # If the attribute is of type TEXCOORD or BLENDWEIGHT and it's
+                    # value is zero we ignore it.
+                    if not ((attr.name.startswith(VertexAttribute.BLENDWEIGHT, 0, len(VertexAttribute.BLENDWEIGHT)) \
+                             or attr.name.startswith(VertexAttribute.TEXCOORD, 0, len(VertexAttribute.TEXCOORD))) \
+                            and Util.floatListToString(attr.value) == self._listOfZeros):
+                        self._hashCache = 31 * self._hashCache + hash(attr)
         return self._hashCache
 
     @profile('eqVertex')

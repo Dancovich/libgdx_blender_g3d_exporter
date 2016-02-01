@@ -56,6 +56,12 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         description="Export only selected objects",
         default=False
     )
+    
+    applyModifiers = BoolProperty(
+        name="Apply Modifiers",
+        description="Apply modifiers to each mesh before exporting, doesn't affect original meshes",
+        default=True
+    )
 
     exportArmature = BoolProperty(
         name="Export Armatures",
@@ -86,6 +92,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         "filepath",
         "check_existing",
         "useSelection",
+        "applyModifiers",
         "exportArmature",
         "bonesPerVertex",
         "exportAnimation",
@@ -119,7 +126,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
         # Initialize our model
         self.g3dModel = G3DModel()
-
+        
         # Generate the mesh list of the model
         meshes = self.generateMeshes(context)
         if meshes is not None:
@@ -182,8 +189,10 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
             # Clone mesh to a temporary object. Wel'll apply modifiers and triangulate the
             # clone before exporting.
-            currentBlMesh = currentObjNode.to_mesh(context.scene, False, 'PREVIEW', calc_tessface=False)
+            currentObjNode = currentObjNode.copy()
+            currentBlMesh = currentObjNode.to_mesh(context.scene, self.applyModifiers, 'PREVIEW', calc_tessface=False)
             self.meshTriangulate(currentBlMesh)
+            currentObjNode.data = currentBlMesh
 
             # We can only export polygons that are associated with a material, so we loop
             # through the list of materials for this mesh
@@ -207,7 +216,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
                 for poly in currentBlMesh.polygons:
                     if (poly.material_index != blMaterialIndex):
-
                         continue
 
                     for loopIndex in poly.loop_indices:
@@ -314,12 +322,11 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         # Exporting bone weights. We only export at most 'self.bonesPerVertex' bones
                         # for a single vertex.
                         if self.exportArmature:
-
                             zeroWeight = Util.floatToString(0.0)
                             blendWeightAttrName = VertexAttribute.BLENDWEIGHT + "%d"
 
-                            if currentObjNode.parent is not None and currentObjNode.parent.type == 'ARMATURE':
-                                armatureObj = currentObjNode.parent
+                            armatureObj = currentObjNode.find_armature()
+                            if armatureObj is not None:
                                 boneIndex = -1
                                 blendWeightIndex = 0
 
@@ -333,14 +340,12 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                                     # Search for a bone with the same name as a vertex group
                                     bone = None
                                     try:
-
                                         bone = armatureObj.data.bones[vertexGroup.name]
                                     except:
                                         bone = None
                                         pass
 
                                     if bone is not None:
-
                                         boneIndex = boneIndex + 1
 
                                         try:
@@ -380,6 +385,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 Util.debug("\nFinished creating mesh part.\nMesh part data:\n###\n{!r}\n###", currentMeshPart)
 
             # Clean cloned mesh
+            bpy.data.objects.remove(currentObjNode)
             bpy.data.meshes.remove(currentBlMesh)
 
             # Normalize attributes so mesh has same number of them for all vertices
@@ -663,7 +669,8 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         vertexGroupsForMaterial = self.listPartVertexGroups(blNode, blNode.data, blMaterialIndex)
                         for blVertexGroup in vertexGroupsForMaterial:
                             # Try to find an armature with a bone associated with this vertex group
-                            if blNode.parent is not None and blNode.parent.type == 'ARMATURE':
+                            blArmature = blNode.find_armature()
+                            if blArmature is not None:
                                 blArmature = blNode.parent.data
                                 try:
                                     bone = blArmature.bones[blVertexGroup.name]

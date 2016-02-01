@@ -451,9 +451,14 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         ambientColor = list(worldAmbientColor)
                 currentMaterial.ambient = ambientColor
 
-                currentMaterial.diffuse = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
+                currentMaterial.diffuse = [blMaterial.diffuse_color[0] * blMaterial.diffuse_intensity, \
+                                           blMaterial.diffuse_color[1] * blMaterial.diffuse_intensity, \
+                                           blMaterial.diffuse_color[2] * blMaterial.diffuse_intensity]
 
-                currentMaterial.specular = [blMaterial.specular_color[0], blMaterial.specular_color[1], blMaterial.specular_color[2], blMaterial.specular_alpha]
+                currentMaterial.specular = [blMaterial.specular_color[0] * blMaterial.specular_intensity \
+                                            , blMaterial.specular_color[1] * blMaterial.specular_intensity \
+                                            , blMaterial.specular_color[2] * blMaterial.specular_intensity \
+                                            , blMaterial.specular_alpha]
 
                 currentMaterial.emissive = [blMaterial.diffuse_color[0], blMaterial.diffuse_color[1], blMaterial.diffuse_color[2]]
 

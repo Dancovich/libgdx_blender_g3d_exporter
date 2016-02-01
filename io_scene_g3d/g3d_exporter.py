@@ -555,7 +555,6 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
             return None
 
         for blNode in listOfBlenderObjects:
-
             # Node must be a bone, a mesh or an armature
             if not isinstance(blNode, bpy.types.Bone):
                 if blNode.type == 'MESH':
@@ -632,6 +631,14 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 if currentBlMesh.materials is None:
                     Util.warn("Ignored mesh %r, no materials found" % currentBlMesh)
                     continue
+                
+                # We apply the mesh modifiers to a cloned mesh. Modifiers that duplicate
+                # vertices (like Mirror modifier) need this so when we scan vertex groups these
+                # vertices are considered real and we know which vertex groups they are weighted to
+                clonedAppliedModifiersNode = blNode.copy()
+                clonedAppliedModifiersMesh = clonedAppliedModifiersNode.to_mesh(context.scene, self.applyModifiers, 'PREVIEW', calc_tessface=False)
+                self.meshTriangulate(clonedAppliedModifiersMesh)
+                clonedAppliedModifiersNode.data = clonedAppliedModifiersMesh
 
                 for blMaterialIndex in range(0, len(currentBlMesh.materials)):
                     currentBlMaterial = currentBlMesh.materials[blMaterialIndex]
@@ -665,8 +672,9 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                     # Start writing bones
                     if self.exportArmature and len(blNode.vertex_groups) > 0:
 
-                        # Getting only the vertex groups associated with this node part
-                        vertexGroupsForMaterial = self.listPartVertexGroups(blNode, blNode.data, blMaterialIndex)
+                        # Getting only the vertex groups associated with this node part. We use our cloned mesh with applied modifiers for this
+                        vertexGroupsForMaterial = self.listPartVertexGroups(clonedAppliedModifiersNode, clonedAppliedModifiersMesh, blMaterialIndex)
+
                         for blVertexGroup in vertexGroupsForMaterial:
                             # Try to find an armature with a bone associated with this vertex group
                             blArmature = blNode.find_armature()
@@ -703,6 +711,10 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
 
                     # Adding this node part to the current node
                     currentNode.addPart(nodePart)
+                
+                # Clean up cloned meshes
+                bpy.data.objects.remove(clonedAppliedModifiersNode)
+                bpy.data.meshes.remove(clonedAppliedModifiersMesh)
 
             # If this node is a parent, export it's children
             if blNode.children is not None and len(blNode.children) > 0:

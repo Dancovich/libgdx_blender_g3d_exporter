@@ -15,6 +15,7 @@ from ..draft9 import Draft9Decoder
 from ..exceptions import EarlyEndOfStreamError
 import io_scene_g3d
 
+output_old_format = True
 
 def pprint(data, output=sys.stdout, allow_noop=True,
            indent=' ' * 4, max_level=None, spec='draft-9'):
@@ -70,6 +71,7 @@ def pprint(data, output=sys.stdout, allow_noop=True,
                 pattern = '[%s] [%s] [%s] [%s]\n'
                 # very dirty hack to show size as marker and value
                 _decoder = Draft9Decoder(io_scene_g3d.simpleubjson.encode(length, spec=spec))
+                _decoder.old_format_json = output_old_format
                 tlv = _decoder.next_tlv()
                 args = tuple([utag, tlv[0].decode(), tlv[2], value])
                 maybe_write(pattern % args, level)
@@ -80,6 +82,7 @@ def pprint(data, output=sys.stdout, allow_noop=True,
     # elif spec.lower() in ['draft9', 'draft-9']:
     if spec.lower() in ['draft9', 'draft-9']:
         decoder = Draft9Decoder(data, allow_noop)
+        decoder.old_format_json = output_old_format
         inspect = inspect_draft9
     else:
         raise ValueError('Unknown or unsupported specification %s' % spec)

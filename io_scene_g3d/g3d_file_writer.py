@@ -28,7 +28,6 @@ from io_scene_g3d.domain_classes import G3DModel
 from io_scene_g3d.g3dj_json_encoder import G3DJsonEncoder
 from io_scene_g3d.profile import profile
 
-
 class G3DBaseWriter(object):
 
     ordered = True
@@ -267,14 +266,22 @@ class G3DJWriter(G3DBaseWriter):
 class G3DBWriter(G3DBaseWriter):
 
     ordered = True
+    
+    oldFormat = True
+    
+    def __init__(self, old_format=True):
+        self.oldFormat = old_format
 
     def export(self, g3dModel, filepath):
         baseModel = self.mountJsonOutput(g3dModel)
 
         output_file = open(filepath, 'wb')
+        
+        simpleubjson.old_format_json = self.oldFormat
         outputdata = simpleubjson.encode(data=baseModel)
         output_file.write(outputdata)
         output_file.close()
 
         if util.LOG_LEVEL >= util._DEBUG_:
+            simpleubjson.set_datatype_format(self.oldFormat)
             simpleubjson.pprint(outputdata)

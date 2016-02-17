@@ -109,9 +109,14 @@ class Draft9Decoder(object):
         Unsized objects are represented as list of 2-element tuple with object
         key and value.
     """
+    
+    old_format_json = True
+    
     dispatch = {}
 
     def __init__(self, source, allow_noop=False):
+        self.old_format_json = True
+        
         if isinstance(source, unicode):
             source = source.encode('utf-8')
         if isinstance(source, bytes):
@@ -129,12 +134,14 @@ class Draft9Decoder(object):
             tag = self.read(1)
         if tag in NUMBERS:
             if tag == INT8:
-                # Trivial operations for trivial cases saves a lot of time
-                # value = ord(self.read(1))
-                # if value > 128:
-                #    value -= 256
-                #    #value, = unpack('>b', self.read(1))
-                value, = unpack('>h', self.read(2))
+                if self.old_format_json:
+                    value, = unpack('>h', self.read(2))
+                else:
+                    # Trivial operations for trivial cases saves a lot of time
+                    value = ord(self.read(1))
+                    if value > 128:
+                        value -= 256
+                        #value, = unpack('>b', self.read(1))
             elif tag == UINT8:
                 value = ord(self.read(1))
                 # value, = unpack('>H', self.read(2))
@@ -358,10 +365,13 @@ class Draft9Encoder(object):
         Dict keys should have string type or :exc:`simpleubjson.EncodeError`
         will be raised.
     """
+    
+    old_format_json = True
 
     dispatch = {}
 
     def __init__(self, default=None):
+        self.old_format_json = True
         self._default = default or self.default
 
     def default(self, obj):
@@ -392,12 +402,18 @@ class Draft9Encoder(object):
     def encode_int(self, obj):
         if (-2 ** 7) <= obj <= (2 ** 7 - 1):
             # return INT8 + CHARS[obj % 256]
-            return INT8 + pack('>h', obj)
+            if self.old_format_json:
+                return INT8 + pack('>h', obj)
+            else:
+                return INT8 + CHARS[obj % 256]
         elif 0 <= obj <= 255:
             return UINT8 + CHARS[obj]
             # return UINT8 + pack('>H', obj)
         elif (-2 ** 15) <= obj <= (2 ** 15 - 1):
-            return INT16 + pack('>h', obj)
+            if self.old_format_json:
+                return INT32 + pack('>i', obj)
+            else:
+                return INT16 + pack('>h', obj)
         elif (-2 ** 31) <= obj <= (2 ** 31 - 1):
             return INT32 + pack('>i', obj)
         elif (-2 ** 63) <= obj <= (2 ** 63 - 1):

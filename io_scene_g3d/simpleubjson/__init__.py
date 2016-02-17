@@ -20,6 +20,7 @@ import warnings
 from .version import __version__
 # from .draft8 import Draft8Decoder, Draft8Encoder
 from .draft9 import Draft9Decoder, Draft9Encoder
+from .tools import inspect
 from .tools.inspect import pprint
 from .exceptions import DecodeError, EncodeError
 
@@ -36,6 +37,12 @@ warnings.simplefilter('once')
 _DRAFT8_DEPRECATED = ('Draft-8 specification is too old and deprecated.'
                       ' Please upgrade your data to fit Draft-9 spec.')
 
+
+old_format_json = True
+
+def set_datatype_format(old_format=True):
+    old_format_json = old_format
+    inspect.output_old_format = old_format_json
 
 def decode(data, allow_noop=False, spec='draft9'):
     """Decodes input stream of UBJSON data to Python object.
@@ -84,7 +91,9 @@ def encode(data, output=None, default=None, spec='draft-9'):
     #    res = _draft8_encoder(default).encode_next(data)
     # elif spec.lower() in ['draft9', 'draft-9']:
     if spec.lower() in ['draft9', 'draft-9']:
-        res = _draft9_encoder(default).encode_next(data)
+        current_encoder = _draft9_encoder(default)
+        current_encoder.old_format_json = old_format_json
+        res = current_encoder.encode_next(data)
     else:
         raise ValueError('Unknown or unsupported specification %s' % spec)
     if output:

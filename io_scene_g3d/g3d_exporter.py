@@ -87,6 +87,10 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         description="Calculate and export tangent and binormal vectors for normal mapping. Requires UV mapping the mesh.",
         default=False
     )
+    
+    # This is overriden by the G3DB subclass of this exporter. For the G3DJ this isn't
+    # used and is here with it's default value to pass to methods.
+    oldFormatJson = True
 
     order = [
         "filepath",
@@ -152,7 +156,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
         if self.filename_ext == ".g3dj":
             exporter = g3d_file_writer.G3DJWriter()
         elif self.filename_ext == ".g3db":
-            exporter = g3d_file_writer.G3DBWriter()
+            exporter = g3d_file_writer.G3DBWriter(old_format=self.oldFormatJson)
 
         if exporter is not None:
             Util.info("Writing output file")
@@ -1236,6 +1240,24 @@ class G3DBExporterOperator(bpy.types.Operator, G3DBaseExporterOperator):
     bl_options = {'PRESET'}
 
     filename_ext = ".g3db"
+    
+    oldFormatJson = BoolProperty(
+        name="Use Old UBJSON Datatypes",
+        description="Use the old UBJSON datatype sizes. LibGDX loads the old format by default.",
+        default=True
+    )
+    
+    order = [
+        "filepath",
+        "check_existing",
+        "useSelection",
+        "applyModifiers",
+        "exportArmature",
+        "bonesPerVertex",
+        "exportAnimation",
+        "generateTangentBinormal",
+        "oldFormatJson",
+    ]
 
 
 class G3DJExporterOperator(bpy.types.Operator, G3DBaseExporterOperator):

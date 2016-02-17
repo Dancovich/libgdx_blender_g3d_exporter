@@ -29,8 +29,8 @@ _ERROR_ = 1
 
 # LOG_LEVEL = _ERROR_
 # LOG_LEVEL = _WARN_
-# LOG_LEVEL = _INFO_
-LOG_LEVEL = _DEBUG_
+LOG_LEVEL = _INFO_
+# LOG_LEVEL = _DEBUG_
 
 # Sorts vertex attributes
 _ATTRIBUTE_SORT_ = {}

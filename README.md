@@ -84,6 +84,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.4.1**
+  - Ops, changed default log level to INFO again, was set to DEBUG last version.
+
 * **0.2.4**
   - Added option to choose between old format and new format for UBJSON data types (default is old format as in LibGDX, read 'Usage' section).
 

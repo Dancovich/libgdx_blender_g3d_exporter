@@ -84,6 +84,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.4**
+  - Added option to choose between old format and new format for UBJSON data types (default is old format as in LibGDX, read 'Usage' section).
+
 * **0.2.3**
   - Added exporter option to apply modifiers during export. Original model won't be touched and exported model will be the one after applying modifiers.
   - Support for handling vertices generated after applying modifiers. 

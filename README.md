@@ -84,6 +84,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.5**
+  - Fixed wrong size of exported COLOR attribute, was exporting 3 floats when LibGDX expect four.
+
 * **0.2.4.1**
   - Ops, changed default log level to INFO again, was set to DEBUG last version.
 

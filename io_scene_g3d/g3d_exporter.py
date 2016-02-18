@@ -295,8 +295,9 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                         # Defining vertex color
                         colorMap = currentBlMesh.vertex_colors.active
                         if colorMap is not None:
-                            color = [None] * 3
+                            color = [None] * 4
                             color[0], color[1], color[2] = colorMap.data[loopIndex].color
+                            color[3] = 1.0
 
                             attribute = VertexAttribute(name=VertexAttribute.COLOR, value=color)
 

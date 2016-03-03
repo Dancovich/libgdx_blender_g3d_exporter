@@ -35,6 +35,8 @@ bl_info = {
     "blender": (2, 76, 0),
     "location": "File > Import-Export",
     "description": "Export scene to LibGDX format",
+    "tracker_url": "https://github.com/Dancovich/libgdx_blender_g3d_exporter/issues",
+    "wiki_url": "https://github.com/Dancovich/libgdx_blender_g3d_exporter/wiki",
     "category": "Import-Export"}
 
 try:

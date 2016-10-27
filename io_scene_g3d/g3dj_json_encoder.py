@@ -17,7 +17,7 @@
 # <pep8 compliant>
 
 import json
-from json.encoder import encode_basestring_ascii, encode_basestring, FLOAT_REPR, INFINITY
+from json.encoder import encode_basestring_ascii, encode_basestring, INFINITY
 import collections
 
 c_make_encoder = None
@@ -60,7 +60,7 @@ class G3DJsonEncoder(json.JSONEncoder):
             _encoder = encode_basestring
 
         def floatstr(o, allow_nan=self.allow_nan,
-                     _repr=FLOAT_REPR, _inf=INFINITY, _neginf=-INFINITY):
+                     _repr=float.__repr__, _inf=INFINITY, _neginf=-INFINITY):
             """
              *** Overwrites JSONEncoder.iterencode.floatstr to round floats before returning
             """

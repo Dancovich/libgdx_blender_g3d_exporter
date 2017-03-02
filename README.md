@@ -37,6 +37,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.6**
+  - Fixed crash when using Python version 3.5.2 and up (thanks to thbell for finding and fixing this: https://github.com/thbell).
+
 * **0.2.5**
   - Fixed wrong size of exported COLOR attribute, was exporting 3 floats when LibGDX expect four.
 

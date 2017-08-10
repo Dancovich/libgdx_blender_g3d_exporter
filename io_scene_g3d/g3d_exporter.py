@@ -182,7 +182,12 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 continue
 
             # If we already processed the mesh data associated with this object, continue (ex: multiple objects pointing to same mesh data)
-            if self.g3dModel.hasMesh(currentObjNode.data.name):
+            duplicatedMesh = False
+            for mesh in generatedMeshes:
+                if (mesh.id == currentObjNode.data.name):
+                    duplicatedMesh = True
+                    break
+            if duplicatedMesh or self.g3dModel.hasMesh(currentObjNode.data.name):
                 Util.debug("Mesh '{!s}' already exported from another object", currentObjNode.data.name)
                 continue
 

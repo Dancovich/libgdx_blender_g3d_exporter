@@ -37,6 +37,9 @@ Any *.g3dj/.g3db* files exported by this script are considered program output an
 
 ### Changes
 
+* **0.2.7**
+  - Fixed bug where having multiple objects use the same mesh data on Blender would result in multiple meshes being exported
+
 * **0.2.6**
   - Fixed crash when using Python version 3.5.2 and up (thanks to thbell for finding and fixing this: https://github.com/thbell).
 

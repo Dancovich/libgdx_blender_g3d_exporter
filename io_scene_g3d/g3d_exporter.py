@@ -212,7 +212,7 @@ class G3DBaseExporterOperator(ExportHelper, IOG3DOrientationHelper):
                 continue
 
             for blMaterialIndex in range(0, len(currentBlMesh.materials)):
-                if currentBlMesh.materials[blMaterialIndex].type != 'SURFACE':
+                if currentBlMesh.materials[blMaterialIndex] is None or currentBlMesh.materials[blMaterialIndex].type != 'SURFACE':
                     Util.debug("Ignoring mesh part for material '{!s}', type is not SURFACE (is {!s})", currentBlMesh.materials[blMaterialIndex].name, currentBlMesh.materials[blMaterialIndex].type)
                 else:
                     Util.debug("Processing mesh part for material '{!s}'", currentBlMesh.materials[blMaterialIndex].name)

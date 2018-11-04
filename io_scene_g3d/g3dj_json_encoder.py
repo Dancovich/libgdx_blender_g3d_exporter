@@ -35,9 +35,9 @@ class G3DJsonEncoder(json.JSONEncoder):
         self.float_round = float_round
         self.float_format = "%" + str(self.float_round + 3) + "." + str(self.float_round) + "f"
 
-        super().__init__(skipkeys, ensure_ascii,
-                         check_circular, allow_nan, sort_keys,
-                         indent, separators, default)
+        super().__init__(skipkeys=skipkeys, ensure_ascii=ensure_ascii,
+                         check_circular=check_circular, allow_nan=allow_nan, sort_keys=sort_keys,
+                         indent=indent, separators=separators, default=default)
 
     def iterencode(self, o, _one_shot=False):
         """
